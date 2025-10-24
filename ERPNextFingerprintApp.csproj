@@ -1,0 +1,50 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <AssemblyName>ERPNextFingerprintApp</AssemblyName>
+    <RootNamespace>ERPNextFingerprintApp</RootNamespace>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Serilog" Version="3.1.1" />
+    <PackageReference Include="Serilog.Sinks.Console" Version="5.0.1" />
+    <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="DPUruNet">
+      <HintPath>C:\Program Files\DigitalPersona\U.are.U SDK\Windows\Lib\.NET\DPUruNet.dll</HintPath>
+    </Reference>
+    <Reference Include="DPCtlUruNet">
+      <HintPath>C:\Program Files\DigitalPersona\U.are.U SDK\Windows\Lib\.NET\DPCtlUruNet.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+
+
+  <ItemGroup>
+    <None Update="config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="UareUSampleCSharp\**" />
+    <EmbeddedResource Remove="UareUSampleCSharp\**" />
+    <None Remove="UareUSampleCSharp\**" />
+  </ItemGroup>
+
+</Project>

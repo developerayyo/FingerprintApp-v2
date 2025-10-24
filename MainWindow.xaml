@@ -1,0 +1,470 @@
+<Window x:Class="ERPNextFingerprintApp.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        Title="ERPNext Fingerprint Integration System"
+        Height="700" Width="1000"
+        MinHeight="600" MinWidth="800"
+        Background="{StaticResource BackgroundBrush}"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="{StaticResource PrimaryBrush}" Padding="20,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="🔐" FontSize="24" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel>
+                        <TextBlock Text="ERPNext Fingerprint Integration" 
+                                 FontSize="20" FontWeight="SemiBold" 
+                                 Foreground="White"/>
+                        <TextBlock Text="Lord's Mint Tech Nig Ltd" 
+                                 FontSize="12" 
+                                 Foreground="#E8F5E8"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Right">
+                    <!-- Top row: Connection and Time -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
+                        <TextBlock x:Name="ConnectionStatusText" 
+                                 Text="● Connected" 
+                                 Foreground="#4CAF50" 
+                                 FontSize="12" 
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,16,0"/>
+                        <TextBlock x:Name="CurrentTimeText" 
+                                 Text="{Binding Source={x:Static sys:DateTime.Now}, StringFormat='HH:mm:ss'}" 
+                                 Foreground="White" 
+                                 FontSize="12" 
+                                 VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <!-- Bottom row: SDK and Device Status -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <StackPanel Orientation="Horizontal" Margin="0,0,16,0">
+                            <TextBlock Text="SDK:" 
+                                     Foreground="#E8F5E8" 
+                                     FontSize="10" 
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,4,0"/>
+                            <TextBlock x:Name="SdkStatusText" 
+                                     Text="Not Installed" 
+                                     Foreground="#FF6B6B" 
+                                     FontSize="10" 
+                                     VerticalAlignment="Center"/>
+                        </StackPanel>
+                        
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Device:" 
+                                     Foreground="#E8F5E8" 
+                                     FontSize="10" 
+                                     VerticalAlignment="Center"
+                                     Margin="0,0,4,0"/>
+                            <TextBlock x:Name="DeviceStatusText" 
+                                     Text="Not Connected" 
+                                     Foreground="#FF6B6B" 
+                                     FontSize="10" 
+                                     VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Main Content -->
+        <TabControl Grid.Row="1" 
+                    Style="{StaticResource ModernTabControlStyle}"
+                    Margin="16">
+            
+            <!-- Registration Tab -->
+            <TabItem Header="Fingerprint Registration" 
+                     Style="{StaticResource ModernTabItemStyle}">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Registration Form -->
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Employee Registration" 
+                                     Style="{StaticResource HeaderTextStyle}"/>
+                            
+                            <TextBlock Text="Select Employee" 
+                                     Style="{StaticResource BodyTextStyle}" 
+                                     Margin="0,0,0,8"/>
+                            <ComboBox x:Name="EmployeeComboBox"
+                                    Style="{StaticResource ModernComboBoxStyle}"
+                                    ItemsSource="{Binding DataContext.RegistrationViewModel.Employees, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    SelectedItem="{Binding DataContext.RegistrationViewModel.SelectedEmployee, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    DisplayMemberPath="DisplayName"
+                                    IsEditable="True"
+                                    IsTextSearchEnabled="True"
+                                    StaysOpenOnEdit="True"
+                                    Margin="0,0,0,24"/>
+
+                            <!-- Enrollment Options -->
+                            <TextBlock Text="Fingerprint Enrollment" 
+                                     Style="{StaticResource BodyTextStyle}" 
+                                     Margin="0,0,0,8"/>
+                            
+                            <Button Content="🔒 Multi-Scan Enrollment"
+                                  Style="{StaticResource PrimaryButtonStyle}"
+                                  Command="{Binding DataContext.RegistrationViewModel.EnrollFingerprintCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  IsEnabled="{Binding DataContext.RegistrationViewModel.IsCaptureEnabled, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  Margin="0,0,0,16"/>
+
+                            <!-- Enrollment Progress -->
+                            <Border Background="{StaticResource BackgroundBrush}" 
+                                  BorderBrush="{StaticResource BorderBrush}" 
+                                  BorderThickness="1" 
+                                  CornerRadius="4" 
+                                  Padding="12"
+                                  Margin="0,0,0,16"
+                                  Visibility="{Binding DataContext.RegistrationViewModel.IsEnrollmentInProgress, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                <StackPanel>
+                                    <TextBlock Text="Enrollment Progress" 
+                                             Style="{StaticResource BodyTextStyle}" 
+                                             FontWeight="SemiBold"
+                                             Margin="0,0,0,8"/>
+                                    
+                                    <Grid Margin="0,0,0,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" 
+                                                 Text="{Binding DataContext.RegistrationViewModel.EnrollmentProgress, RelativeSource={RelativeSource AncestorType=Window}}"
+                                                 Style="{StaticResource BodyTextStyle}"/>
+                                        <TextBlock Grid.Column="1" 
+                                                 Text="{Binding DataContext.RegistrationViewModel.CurrentScan, RelativeSource={RelativeSource AncestorType=Window}, StringFormat='Scan {0}/4'}"
+                                                 Style="{StaticResource BodyTextStyle}"
+                                                 FontWeight="SemiBold"/>
+                                    </Grid>
+                                    
+                                    <ProgressBar Value="{Binding DataContext.RegistrationViewModel.CurrentScan, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               Maximum="{Binding DataContext.RegistrationViewModel.TotalScans, RelativeSource={RelativeSource AncestorType=Window}}"
+                                               Height="6"
+                                               Background="{StaticResource BorderBrush}"
+                                               Foreground="{StaticResource PrimaryBrush}"
+                                               Margin="0,0,0,8"/>
+                                    
+                                    <TextBlock Text="{Binding DataContext.RegistrationViewModel.QualityPercentage, RelativeSource={RelativeSource AncestorType=Window}, StringFormat='Quality: {0}%'}"
+                                             Style="{StaticResource BodyTextStyle}"
+                                             HorizontalAlignment="Center"
+                                             FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Border>
+
+
+
+                            <Button Content="🔄 Refresh Employees"
+                                  Style="{StaticResource SecondaryButtonStyle}"
+                                  Command="{Binding DataContext.RegistrationViewModel.LoadEmployeesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  Margin="0,0,0,16"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Registration Status -->
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Status" 
+                                         Style="{StaticResource SubHeaderTextStyle}"/>
+                                <Button Grid.Column="1" Content="🔄" 
+                                      Style="{StaticResource SecondaryButtonStyle}"
+                                      Width="30" Height="30" 
+                                      FontSize="12"
+                                      ToolTip="Refresh Status"
+                                      x:Name="RefreshStatusButton"
+                                      Margin="8,0,0,0"/>
+                            </Grid>
+                            
+                            <TextBlock x:Name="RegistrationStatusText"
+                                     Text="{Binding DataContext.RegistrationViewModel.StatusMessage, RelativeSource={RelativeSource AncestorType=Window}}"
+                                     Style="{StaticResource BodyTextStyle}"
+                                     TextWrapping="Wrap"
+                                     Margin="0,8,0,16"/>
+
+                            <ProgressBar x:Name="RegistrationProgressBar"
+                                       IsIndeterminate="{Binding DataContext.RegistrationViewModel.IsLoading, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       Height="4"
+                                       Background="{StaticResource BorderBrush}"
+                                       Foreground="{StaticResource PrimaryBrush}"
+                                       Margin="0,0,0,16"/>
+
+                            <!-- SDK Status Section -->
+                            <TextBlock Text="SDK Status:" 
+                                     Style="{StaticResource SubHeaderTextStyle}"
+                                     Margin="0,0,0,4"/>
+                            <Border Background="#F8F9FA" 
+                                  BorderBrush="{StaticResource BorderBrush}" 
+                                  BorderThickness="1" 
+                                  CornerRadius="4" 
+                                  Padding="8"
+                                  Margin="0,0,0,12">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <TextBlock Text="Installation:" 
+                                                 Style="{StaticResource CaptionTextStyle}" 
+                                                 Width="80"/>
+                                        <TextBlock x:Name="RegistrationSdkStatusText" 
+                                                 Text="Not Installed" 
+                                                 Foreground="#FF6B6B" 
+                                                 FontSize="11" 
+                                                 FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Device:" 
+                                                 Style="{StaticResource CaptionTextStyle}" 
+                                                 Width="80"/>
+                                        <TextBlock x:Name="RegistrationDeviceStatusText" 
+                                                 Text="Not Connected" 
+                                                 Foreground="#FF6B6B" 
+                                                 FontSize="11" 
+                                                 FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="Instructions:" 
+                                     Style="{StaticResource SubHeaderTextStyle}"/>
+                            <TextBlock Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap">
+                                1. Select an employee from the dropdown<LineBreak/>
+                                2. Click "Multi-Scan Enrollment"<LineBreak/>
+                                3. Follow the on-screen prompts for multiple scans<LineBreak/>
+                                4. Fingerprint will be automatically saved to ERPNext
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+
+            <!-- Verification Tab -->
+            <TabItem Header="Fingerprint Verification" 
+                     Style="{StaticResource ModernTabItemStyle}">
+                <Grid Margin="16">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="16"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Verification Form -->
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <TextBlock Text="Employee Verification" 
+                                     Style="{StaticResource HeaderTextStyle}"/>
+
+                            <Button Content="🔍 Verify &amp; Process Deduction"
+                                  Style="{StaticResource PrimaryButtonStyle}"
+                                  Command="{Binding DataContext.VerificationViewModel.ScanFingerprintCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  IsEnabled="{Binding DataContext.VerificationViewModel.IsScanEnabled, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  FontSize="16"
+                                  Padding="24,16"
+                                  Margin="0,0,0,16"/>
+
+                            <Button Content="🔄 Refresh Employees"
+                                  Style="{StaticResource SecondaryButtonStyle}"
+                                  Command="{Binding DataContext.VerificationViewModel.LoadEmployeesCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                  Margin="0,0,0,24"/>
+
+                            <!-- Verified Employee Info -->
+                            <Border x:Name="VerifiedEmployeePanel"
+                                  Background="{StaticResource SuccessBrush}"
+                                  CornerRadius="4"
+                                  Padding="16"
+                                  Margin="0,0,0,24"
+                                  Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock Text="✅ Employee Verified" 
+                                             Foreground="White" 
+                                             FontWeight="SemiBold"
+                                             Margin="0,0,0,8"/>
+                                    <TextBlock Text="{Binding DataContext.VerificationViewModel.VerifiedEmployee.DisplayName, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                             Foreground="White" 
+                                             FontSize="16"
+                                             FontWeight="Medium"/>
+                                    <TextBlock Text="{Binding DataContext.VerificationViewModel.VerifiedEmployee.Department, RelativeSource={RelativeSource AncestorType=Window}}" 
+                                             Foreground="White" 
+                                             FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Deduction Form -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="16"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Deduction Type" 
+                                             Style="{StaticResource BodyTextStyle}" 
+                                             Margin="0,0,0,8"/>
+                                    <ComboBox Style="{StaticResource ModernComboBoxStyle}"
+                                            ItemsSource="{Binding DataContext.VerificationViewModel.DeductionTypes, RelativeSource={RelativeSource AncestorType=Window}}"
+                                            SelectedItem="{Binding DataContext.VerificationViewModel.SelectedDeductionType, RelativeSource={RelativeSource AncestorType=Window}}"/>
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Amount (₦)" 
+                                             Style="{StaticResource BodyTextStyle}" 
+                                             Margin="0,0,0,8"/>
+                                    <TextBox Style="{StaticResource ModernTextBoxStyle}"
+                                           Text="{Binding DataContext.VerificationViewModel.DeductionAmount, RelativeSource={RelativeSource AncestorType=Window}, StringFormat=F2}"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <TextBlock Text="💡 Enter deduction details above, then click 'Verify &amp; Process Deduction' to complete the transaction in one step."
+                                     Style="{StaticResource BodyTextStyle}"
+                                     TextWrapping="Wrap"
+                                     Foreground="{StaticResource TextSecondaryBrush}"
+                                     FontStyle="Italic"
+                                     Margin="0,16,0,0"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Verification Status & Recent Transactions -->
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Status" 
+                                         Style="{StaticResource SubHeaderTextStyle}"/>
+                                <Button Grid.Column="1" Content="🔄" 
+                                      Style="{StaticResource SecondaryButtonStyle}"
+                                      Width="30" Height="30" 
+                                      FontSize="12"
+                                      ToolTip="Refresh Status"
+                                      x:Name="RefreshVerificationStatusButton"
+                                      Margin="8,0,0,0"/>
+                            </Grid>
+                            
+                            <TextBlock x:Name="VerificationStatusText"
+                                     Text="{Binding DataContext.VerificationViewModel.StatusMessage, RelativeSource={RelativeSource AncestorType=Window}}"
+                                     Style="{StaticResource BodyTextStyle}"
+                                     TextWrapping="Wrap"
+                                     Margin="0,8,0,16"/>
+
+                            <ProgressBar x:Name="VerificationProgressBar"
+                                       IsIndeterminate="{Binding DataContext.VerificationViewModel.IsLoading, RelativeSource={RelativeSource AncestorType=Window}}"
+                                       Height="4"
+                                       Background="{StaticResource BorderBrush}"
+                                       Foreground="{StaticResource PrimaryBrush}"
+                                       Margin="0,0,0,16"/>
+
+                            <!-- SDK Status Section -->
+                            <TextBlock Text="SDK Status:" 
+                                     Style="{StaticResource SubHeaderTextStyle}"
+                                     Margin="0,0,0,4"/>
+                            <Border Background="#F8F9FA" 
+                                  BorderBrush="{StaticResource BorderBrush}" 
+                                  BorderThickness="1" 
+                                  CornerRadius="4" 
+                                  Padding="8"
+                                  Margin="0,0,0,12">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                        <TextBlock Text="Installation:" 
+                                                 Style="{StaticResource CaptionTextStyle}" 
+                                                 Width="80"/>
+                                        <TextBlock x:Name="VerificationSdkStatusText" 
+                                                 Text="Not Installed" 
+                                                 Foreground="#FF6B6B" 
+                                                 FontSize="11" 
+                                                 FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="Device:" 
+                                                 Style="{StaticResource CaptionTextStyle}" 
+                                                 Width="80"/>
+                                        <TextBlock x:Name="VerificationDeviceStatusText" 
+                                                 Text="Not Connected" 
+                                                 Foreground="#FF6B6B" 
+                                                 FontSize="11" 
+                                                 FontWeight="SemiBold"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <TextBlock Text="Recent Transactions" 
+                                     Style="{StaticResource SubHeaderTextStyle}"/>
+                            
+                            <ListView ItemsSource="{Binding DataContext.VerificationViewModel.RecentDeductions, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    MaxHeight="200"
+                                    ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                <ListView.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,4">
+                                            <TextBlock Text="{Binding EmployeeName}" 
+                                                     FontWeight="Medium" 
+                                                     FontSize="12"/>
+                                            <TextBlock FontSize="10" 
+                                                     Foreground="{StaticResource TextSecondaryBrush}">
+                                                <Run Text="{Binding DeductionType}"/>
+                                                <Run Text=" - ₦"/>
+                                                <Run Text="{Binding Amount, StringFormat=F2}"/>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ListView.ItemTemplate>
+                            </ListView>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+            </TabItem>
+        </TabControl>
+
+        <!-- Footer -->
+        <Border Grid.Row="2" 
+                Background="{StaticResource SurfaceBrush}" 
+                BorderBrush="{StaticResource BorderBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="20,12">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock x:Name="FooterStatusText" 
+                         Text="Ready" 
+                         Style="{StaticResource CaptionTextStyle}"
+                         VerticalAlignment="Center"/>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <TextBlock Text="Version 1.0.0" 
+                             Style="{StaticResource CaptionTextStyle}"
+                             VerticalAlignment="Center"
+                             Margin="0,0,16,0"/>
+                    <TextBlock Text="© 2024 Lord's Mint Tech" 
+                             Style="{StaticResource CaptionTextStyle}"
+                             VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
