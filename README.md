@@ -183,15 +183,28 @@ The application uses **session-based authentication** with username/password log
 ### Employee Verification
 
 1. **Navigate to Verification Tab**
-2. **Start Verification**:
+2. **Set Deduction Details**:
+   - Enter deduction amount
+   - Select deduction type (Loan, Advance, etc.)
+
+3. **Start Verification**:
    - Click "Start Verification"
    - Place finger on scanner
    - Wait for verification result
 
-3. **View Results**:
-   - Employee information will be displayed
-   - Verification status (Success/Failed)
-   - Timestamp and additional details
+4. **Automatic Processing** (happens immediately after verification):
+   - Employee information is displayed
+   - Verification status (Success/Failed) is shown
+   - **If successful**: Deduction is automatically created in ERPNext
+   - Transaction ID is generated and displayed
+   - Recent deductions list is updated
+
+5. **View Results**:
+   - Employee details and verification timestamp
+   - Deduction processing status
+   - Transaction ID for successful deductions
+   - Recent deductions history (last 10 transactions)
+   - Automatic reset after 3 seconds for next verification
 
 ### Application Features
 
