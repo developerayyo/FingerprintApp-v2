@@ -1,10 +1,13 @@
 using System;
+using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Serilog;
 using ERPNextFingerprintApp.ViewModels;
 using ERPNextFingerprintApp.Services;
+using ERPNextFingerprintApp.Views;
 using System.Diagnostics;
 
 namespace ERPNextFingerprintApp
@@ -13,6 +16,7 @@ namespace ERPNextFingerprintApp
     {
         private readonly RegistrationViewModel _registrationViewModel;
         private readonly VerificationViewModel _verificationViewModel;
+        private readonly TicketsViewModel _ticketsViewModel;
         private readonly ERPNextApiService _apiService;
         private readonly DispatcherTimer _timeTimer;
         private readonly DispatcherTimer _heartbeatTimer;
@@ -20,6 +24,7 @@ namespace ERPNextFingerprintApp
         public MainWindow(
             RegistrationViewModel registrationViewModel,
             VerificationViewModel verificationViewModel,
+            TicketsViewModel ticketsViewModel,
             ERPNextApiService apiService)
         {
             try
@@ -31,6 +36,7 @@ namespace ERPNextFingerprintApp
 
                 _registrationViewModel = registrationViewModel;
                 _verificationViewModel = verificationViewModel;
+                _ticketsViewModel = ticketsViewModel;
                 _apiService = apiService;
 
                 // Set up ViewModels
@@ -346,6 +352,28 @@ namespace ERPNextFingerprintApp
                     VerificationDeviceStatusText.Text = deviceConnected ? "Connected" : "Not Connected";
                     VerificationDeviceStatusText.Foreground = new System.Windows.Media.SolidColorBrush(
                         deviceConnected ? System.Windows.Media.Color.FromRgb(76, 175, 80) : System.Windows.Media.Color.FromRgb(255, 107, 107));
+                    
+                    // Update Ticket tab status - find the TicketsView UserControl
+                    var ticketsTabItem = MainTabControl.Items.Cast<TabItem>().FirstOrDefault(t => t.Header.ToString() == "Ticket");
+                    if (ticketsTabItem?.Content is Views.TicketsView ticketsView)
+                    {
+                        var ticketsSdkStatusText = ticketsView.FindName("TicketsSdkStatusText") as TextBlock;
+                        var ticketsDeviceStatusText = ticketsView.FindName("TicketsDeviceStatusText") as TextBlock;
+                        
+                        if (ticketsSdkStatusText != null)
+                        {
+                            ticketsSdkStatusText.Text = sdkInstalled ? "Installed" : "Not Installed";
+                            ticketsSdkStatusText.Foreground = new System.Windows.Media.SolidColorBrush(
+                                sdkInstalled ? System.Windows.Media.Color.FromRgb(76, 175, 80) : System.Windows.Media.Color.FromRgb(255, 107, 107));
+                        }
+                        
+                        if (ticketsDeviceStatusText != null)
+                        {
+                            ticketsDeviceStatusText.Text = deviceConnected ? "Connected" : "Not Connected";
+                            ticketsDeviceStatusText.Foreground = new System.Windows.Media.SolidColorBrush(
+                                deviceConnected ? System.Windows.Media.Color.FromRgb(76, 175, 80) : System.Windows.Media.Color.FromRgb(255, 107, 107));
+                        }
+                    }
                 });
                 
                 // Log status update
@@ -379,6 +407,26 @@ namespace ERPNextFingerprintApp
                     VerificationSdkStatusText.Foreground = errorBrush;
                     VerificationDeviceStatusText.Text = "Error";
                     VerificationDeviceStatusText.Foreground = errorBrush;
+                    
+                    // Update Ticket tab error status - find the TicketsView UserControl
+                    var ticketsTabItem = MainTabControl.Items.Cast<TabItem>().FirstOrDefault(t => t.Header.ToString() == "Ticket");
+                    if (ticketsTabItem?.Content is Views.TicketsView ticketsView)
+                    {
+                        var ticketsSdkStatusText = ticketsView.FindName("TicketsSdkStatusText") as TextBlock;
+                        var ticketsDeviceStatusText = ticketsView.FindName("TicketsDeviceStatusText") as TextBlock;
+                        
+                        if (ticketsSdkStatusText != null)
+                        {
+                            ticketsSdkStatusText.Text = "Error";
+                            ticketsSdkStatusText.Foreground = errorBrush;
+                        }
+                        
+                        if (ticketsDeviceStatusText != null)
+                        {
+                            ticketsDeviceStatusText.Text = "Error";
+                            ticketsDeviceStatusText.Foreground = errorBrush;
+                        }
+                    }
                 });
             }
         }
@@ -441,6 +489,7 @@ namespace ERPNextFingerprintApp
         // Properties for data binding
         public RegistrationViewModel RegistrationViewModel => _registrationViewModel;
         public VerificationViewModel VerificationViewModel => _verificationViewModel;
+        public TicketsViewModel TicketsViewModel => _ticketsViewModel;
 
         private async void LogoutButton_Click(object sender, RoutedEventArgs e)
         {

@@ -192,5 +192,12 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- DataGrid Text Styles -->
+        <Style x:Key="RightAlignedTextStyle" TargetType="TextBlock">
+            <Setter Property="TextAlignment" Value="Right"/>
+            <Setter Property="HorizontalAlignment" Value="Right"/>
+            <Setter Property="FontWeight" Value="Medium"/>
+        </Style>
     </Application.Resources>
 </Application>

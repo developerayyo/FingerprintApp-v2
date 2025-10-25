@@ -29,6 +29,7 @@ namespace ERPNextFingerprintApp.Services
             
             _httpClient = new HttpClient()
             {
+                BaseAddress = new Uri(_config.ErpUrl),
                 Timeout = TimeSpan.FromSeconds(_config.ConnectionTimeout)
             };
             
@@ -38,7 +39,6 @@ namespace ERPNextFingerprintApp.Services
         public async Task<bool> LoginAsync(string username, string password)
         {
             const string endpoint = "/api/method/login";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
@@ -56,7 +56,7 @@ namespace ERPNextFingerprintApp.Services
 
                 var formContent = new FormUrlEncodedContent(loginData);
 
-                var response = await _httpClient.PostAsync(url, formContent);
+                var response = await _httpClient.PostAsync(endpoint, formContent);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
@@ -114,13 +114,12 @@ namespace ERPNextFingerprintApp.Services
             }
 
             const string endpoint = "/api/method/logout";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
                 Log.Information("Logging out current session");
 
-                var response = await _httpClient.PostAsync(url, null);
+                var response = await _httpClient.PostAsync(endpoint, null);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
@@ -185,7 +184,7 @@ namespace ERPNextFingerprintApp.Services
             const string endpoint = "/api/resource/Employee";
             const string fields = "[\"name\",\"employee_name\",\"department\",\"designation\",\"custom_fingerprint_template\"]";
             const string filters = "[[\"status\",\"=\",\"Active\"]]";
-            var url = $"{_config.ErpUrl}{endpoint}?fields={Uri.EscapeDataString(fields)}&filters={Uri.EscapeDataString(filters)}&limit_page_length=0";
+            var url = $"{endpoint}?fields={Uri.EscapeDataString(fields)}&filters={Uri.EscapeDataString(filters)}&limit_page_length=0";
 
             try
             {
@@ -228,7 +227,6 @@ namespace ERPNextFingerprintApp.Services
         public async Task<ApiResult<Employee>> GetEmployeeAsync(string employeeId)
         {
             var endpoint = $"/api/resource/Employee/{employeeId}";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
@@ -237,7 +235,7 @@ namespace ERPNextFingerprintApp.Services
                 // Ensure session authentication is set
                 EnsureSessionAuthentication();
                 
-                var response = await _httpClient.GetAsync(url);
+                var response = await _httpClient.GetAsync(endpoint);
                 var content = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "GET", response.IsSuccessStatusCode, 
@@ -272,7 +270,6 @@ namespace ERPNextFingerprintApp.Services
         {
             // Use standard ERPNext Employee doctype endpoint
             var endpoint = $"/api/resource/Employee/{employeeId}";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
@@ -295,7 +292,7 @@ namespace ERPNextFingerprintApp.Services
                 
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PutAsync(url, content);
+                var response = await _httpClient.PutAsync(endpoint, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 Log.Debug("Response Status: {StatusCode}, Content: {Content}", response.StatusCode, responseContent);
@@ -364,7 +361,6 @@ namespace ERPNextFingerprintApp.Services
         public async Task<ApiResult<VerificationResult>> VerifyFingerprintAndCreateDeductionAsync(string fingerprintTemplate, string deductionType, decimal amount)
         {
             const string endpoint = "/api/method/demoapp.api.fingerprint.verify";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
@@ -386,7 +382,7 @@ namespace ERPNextFingerprintApp.Services
                 var json = JsonHelper.SerializeObject(verificationData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync(url, content);
+                var response = await _httpClient.PostAsync(endpoint, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
@@ -471,7 +467,6 @@ namespace ERPNextFingerprintApp.Services
         public async Task<ApiResult<string>> CreateDeductionAsync(string employeeId, string deductionType, decimal amount, string description)
         {
             const string endpoint = "/api/resource/Deductions";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
@@ -491,7 +486,7 @@ namespace ERPNextFingerprintApp.Services
                 var json = JsonConvert.SerializeObject(deductionData);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-                var response = await _httpClient.PostAsync(url, content);
+                var response = await _httpClient.PostAsync(endpoint, content);
                 var responseContent = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
@@ -527,7 +522,6 @@ namespace ERPNextFingerprintApp.Services
         public async Task<ApiResult<bool>> TestConnectionAsync()
         {
             const string endpoint = "/api/method/frappe.auth.get_logged_user";
-            var url = $"{_config.ErpUrl}{endpoint}";
 
             try
             {
@@ -536,7 +530,7 @@ namespace ERPNextFingerprintApp.Services
                 // Ensure session authentication is set
                 EnsureSessionAuthentication();
                 
-                var response = await _httpClient.GetAsync(url);
+                var response = await _httpClient.GetAsync(endpoint);
                 var content = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "GET", response.IsSuccessStatusCode, 
@@ -560,6 +554,201 @@ namespace ERPNextFingerprintApp.Services
             {
                 Log.Error(ex, "ERPNext connection test failed");
                 return ApiResult<bool>.Failure($"Connection error: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Fetches unused Ticket for a specific employee from ERPNext
+        /// </summary>
+        /// <param name="employeeId">The employee ID to fetch Ticket for</param>
+        /// <returns>List of unused Ticket for the employee</returns>
+        public async Task<ApiResult<List<Ticket>>> GetUnusedTicketsAsync(string employeeId)
+        {
+            try
+            {
+                Log.Information("Fetching unused Ticket for employee: {EmployeeId}", employeeId);
+
+                var fields = "[\"name\",\"employee\",\"employee_name\",\"amount\",\"ticket_type\",\"status\"]";
+                var filters = $"[[\"employee\",\"=\",\"{employeeId}\"],[\"status\",\"=\",\"Unused\"]]";
+                var url = $"/api/resource/Ticket?fields={Uri.EscapeDataString(fields)}&filters={Uri.EscapeDataString(filters)}";
+
+                var response = await _httpClient.GetAsync(url);
+                var content = await response.Content.ReadAsStringAsync();
+
+                Log.Information("Ticket API response status: {StatusCode}", response.StatusCode);
+                Log.Debug("Ticket API response content: {Content}", content);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var apiResponse = JsonConvert.DeserializeObject<ERPNextListResponse<Ticket>>(content);
+                    var tickets = apiResponse?.Data ?? new List<Ticket>();
+                    
+                    Log.Information("Successfully fetched {Count} unused tickets for employee {EmployeeId}", 
+                        tickets.Count, employeeId);
+                    
+                    return ApiResult<List<Ticket>>.Success(tickets);
+                }
+                else
+                {
+                    var errorMessage = $"Failed to fetch Ticket. Status: {response.StatusCode}, Content: {content}";
+                    Log.Error("Failed to fetch Ticket for employee {EmployeeId}: {Error}", employeeId, errorMessage);
+                    return ApiResult<List<Ticket>>.Failure(errorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error fetching Ticket for employee {EmployeeId}", employeeId);
+                return ApiResult<List<Ticket>>.Failure($"Error fetching Ticket: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates a single ticket status to "Used" in ERPNext
+        /// </summary>
+        /// <param name="ticketId">The ticket ID to update</param>
+        /// <param name="usedBy">The user who used the ticket</param>
+        /// <returns>Success or failure result</returns>
+        public async Task<ApiResult<string>> UseTicketAsync(string ticketId, string usedBy)
+        {
+            try
+            {
+                Log.Information("Updating ticket {TicketId} as used by {UsedBy}", ticketId, usedBy);
+
+                var updateData = new
+                {
+                    status = "Used",
+                    custom_used_in = usedBy
+                };
+
+                var json = JsonConvert.SerializeObject(updateData);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var url = $"/api/resource/Ticket/{ticketId}";
+                var response = await _httpClient.PutAsync(url, content);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                Log.Information("Update ticket API response status: {StatusCode}", response.StatusCode);
+                Log.Debug("Update ticket API response content: {Content}", responseContent);
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Log.Information("Successfully updated ticket {TicketId} as used by {UsedBy}", ticketId, usedBy);
+                    return ApiResult<string>.Success($"Ticket {ticketId} used successfully");
+                }
+                else
+                {
+                    var errorMessage = $"Failed to update ticket. Status: {response.StatusCode}, Content: {responseContent}";
+                    Log.Error("Failed to update ticket {TicketId}: {Error}", ticketId, errorMessage);
+                    return ApiResult<string>.Failure(errorMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error updating ticket {TicketId}", ticketId);
+                return ApiResult<string>.Failure($"Error updating ticket: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Updates multiple tickets status to "Used" in ERPNext
+        /// </summary>
+        /// <param name="tickets">List of tickets to update</param>
+        /// <param name="usedBy">The user who used the tickets</param>
+        /// <returns>Success or failure result with summary</returns>
+        public async Task<ApiResult<string>> UseAllTicketsAsync(List<Ticket> tickets, string usedBy)
+        {
+            try
+            {
+                Log.Information("Updating {Count} tickets as used by {UsedBy}", tickets.Count, usedBy);
+
+                var successCount = 0;
+                var failedTickets = new List<string>();
+                var totalAmount = tickets.Sum(t => t.Amount);
+
+                foreach (var ticket in tickets)
+                {
+                    var result = await UseTicketAsync(ticket.Name, usedBy);
+                    if (result.IsSuccess)
+                    {
+                        successCount++;
+                    }
+                    else
+                    {
+                        failedTickets.Add(ticket.Name);
+                        Log.Warning("Failed to update ticket {TicketId}: {Error}", ticket.Name, result.ErrorMessage);
+                    }
+                }
+
+                if (failedTickets.Any())
+                {
+                    var errorMessage = $"Updated {successCount}/{tickets.Count} tickets. Failed tickets: {string.Join(", ", failedTickets)}";
+                    Log.Warning("Partial success updating tickets: {Message}", errorMessage);
+                    return ApiResult<string>.Failure(errorMessage);
+                }
+                else
+                {
+                    var successMessage = $"All {successCount} tickets used successfully (₦{totalAmount:N2} total)";
+                    Log.Information("Successfully updated all tickets: {Message}", successMessage);
+                    return ApiResult<string>.Success(successMessage);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error updating multiple tickets");
+                return ApiResult<string>.Failure($"Error updating tickets: {ex.Message}");
+            }
+        }
+
+        public async Task<ApiResult<string>> GetCurrentUserAsync()
+        {
+            const string endpoint = "/api/method/frappe.auth.get_logged_user";
+
+            try
+            {
+                Log.Information("Getting current logged user from ERPNext");
+                
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
+                
+                var response = await _httpClient.GetAsync(endpoint);
+                var content = await response.Content.ReadAsStringAsync();
+
+                LoggerService.LogApiCall(endpoint, "GET", response.IsSuccessStatusCode, 
+                    response.IsSuccessStatusCode ? null : content);
+
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return ApiResult<string>.Failure("Session expired. Please login again.");
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    var jsonResponse = JsonConvert.DeserializeObject<dynamic>(content);
+                    string? userId = jsonResponse?.message;
+                    
+                    if (!string.IsNullOrEmpty(userId))
+                    {
+                        Log.Information("Successfully retrieved current user: {UserId}", userId);
+                        return ApiResult<string>.Success(userId);
+                    }
+                    else
+                    {
+                        Log.Warning("No user ID returned from ERPNext");
+                        return ApiResult<string>.Failure("No user ID returned from ERPNext");
+                    }
+                }
+                else
+                {
+                    Log.Error("Failed to get current user. Status: {StatusCode}, Content: {Content}", 
+                        response.StatusCode, content);
+                    return ApiResult<string>.Failure($"Failed to get current user: {response.StatusCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error getting current user from ERPNext");
+                return ApiResult<string>.Failure($"Error getting current user: {ex.Message}");
             }
         }
 

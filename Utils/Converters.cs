@@ -13,7 +13,17 @@ namespace ERPNextFingerprintApp.Utils
         {
             if (value is bool boolValue)
             {
-                return boolValue ? Visibility.Visible : Visibility.Collapsed;
+                // Check if inversion is requested
+                bool invert = parameter?.ToString()?.Equals("Invert", StringComparison.OrdinalIgnoreCase) == true;
+                
+                if (invert)
+                {
+                    return boolValue ? Visibility.Collapsed : Visibility.Visible;
+                }
+                else
+                {
+                    return boolValue ? Visibility.Visible : Visibility.Collapsed;
+                }
             }
             return Visibility.Collapsed;
         }

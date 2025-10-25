@@ -146,6 +146,7 @@ namespace ERPNextFingerprintApp
                     // Register ViewModels
                     services.AddTransient<RegistrationViewModel>();
                     services.AddTransient<VerificationViewModel>();
+                    services.AddTransient<TicketsViewModel>();
 
                     // Register Windows
                     services.AddTransient<LoginWindow>();
