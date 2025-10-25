@@ -9,13 +9,15 @@ A comprehensive Windows desktop application that integrates fingerprint authenti
 - **ERPNext Integration**: Direct integration with ERPNext ERP system for employee management
 - **Employee Registration**: Register new employees with fingerprint enrollment
 - **Employee Verification**: Verify employee identity using stored fingerprints
+- **Ticket Management**: View, use, and manage ERPNext tickets with fingerprint verification
 - **Session Management**: Secure session handling with automatic logout
 - **Real-time Logging**: Comprehensive logging system with file and console output
 
 ### User Interface
 - **Modern WPF Interface**: Clean, professional Windows desktop application
 - **Login Window**: Secure authentication with username/password
-- **Main Dashboard**: Tabbed interface for registration and verification
+- **Main Dashboard**: Tabbed interface for registration, verification, and ticket management
+- **Ticket Management View**: Comprehensive ticket viewing and usage interface
 - **Status Indicators**: Real-time connection, SDK, and device status
 - **Loading Indicators**: Visual feedback during operations
 - **Error Handling**: User-friendly error messages and recovery
@@ -206,6 +208,37 @@ The application uses **session-based authentication** with username/password log
    - Recent deductions history (last 10 transactions)
    - Automatic reset after 3 seconds for next verification
 
+### Ticket Management
+
+The application provides comprehensive ticket management functionality integrated with ERPNext:
+
+1. **View Tickets**:
+   - Navigate to the "Tickets" tab
+   - View all available tickets from ERPNext
+   - See ticket details including type, amount, and status
+   - Real-time ticket summary with total count and amount
+
+2. **Use Individual Tickets**:
+   - Select a ticket from the list
+   - Click "Use Ticket" button
+   - Verify fingerprint when prompted
+   - Ticket is automatically updated in ERPNext with the logged-in user
+
+3. **Use All Tickets**:
+   - Click "Use All Tickets" button to process all available tickets
+   - Verify fingerprint for security
+   - All tickets are processed simultaneously
+   - Bulk update in ERPNext with proper user tracking
+
+4. **Ticket Features**:
+   - **Real-time Updates**: Tickets are automatically refreshed from ERPNext
+   - **User Tracking**: Each ticket usage is recorded with the correct ERPNext user ID
+   - **Fingerprint Security**: All ticket operations require fingerprint verification
+   - **Error Handling**: Comprehensive error handling for failed operations
+   - **Status Feedback**: Real-time status updates during ticket processing
+
+**Important**: The application automatically retrieves the current logged-in user's ID from ERPNext to ensure proper ticket tracking and compliance with ERPNext's user management system.
+
 ### Application Features
 
 #### Status Indicators
@@ -269,6 +302,28 @@ The application uses **session-based authentication** with username/password log
 - Review log files for errors
 - Restore from config.json.example
 
+#### 6. Ticket Management Issues
+**Problem**: "Could not find Used In: [ID]" error when using tickets
+**Solution**:
+- Ensure you're logged in with valid ERPNext credentials
+- Verify the logged-in user exists in ERPNext User table
+- Check ERPNext user permissions for Ticket doctype
+- Review application logs for detailed error information
+
+**Problem**: Tickets not loading or empty ticket list
+**Solution**:
+- Verify ERPNext connection status
+- Check user permissions for Ticket doctype (Read access required)
+- Ensure tickets exist in ERPNext for the current user
+- Review API logs for connection issues
+
+**Problem**: Fingerprint verification fails during ticket operations
+**Solution**:
+- Ensure fingerprint scanner is connected and working
+- Verify employee fingerprint is enrolled in the system
+- Check that the current employee matches the logged-in user
+- Restart the application if scanner becomes unresponsive
+
 ### Log File Analysis
 
 Log files are located at the path specified in `config.json` (default: `./logs/`). Each log entry includes:
@@ -298,6 +353,8 @@ ERPNextFingerprintApp/
 ├── Models/                 # Data models and entities
 │   ├── Config.cs          # Configuration model
 │   ├── Employee.cs        # Employee data model
+│   ├── Ticket.cs          # Ticket data model
+│   ├── DeductionRecord.cs # Deduction record model
 │   ├── VerificationResult.cs
 │   └── EnrollmentResult.cs
 ├── Services/              # Business logic services
@@ -307,15 +364,19 @@ ERPNextFingerprintApp/
 │   └── LoggerService.cs        # Logging service
 ├── ViewModels/            # MVVM view models
 │   ├── RegistrationViewModel.cs
-│   └── VerificationViewModel.cs
+│   ├── VerificationViewModel.cs
+│   └── TicketsViewModel.cs     # Ticket management view model
 ├── Views/                 # WPF user interface
 │   ├── LoginWindow.xaml
 │   ├── LoginWindow.xaml.cs
+│   ├── TicketsView.xaml        # Ticket management view
+│   ├── TicketsView.xaml.cs
 │   ├── MainWindow.xaml
 │   └── MainWindow.xaml.cs
 ├── Utils/                 # Utility classes
 │   ├── JsonHelper.cs      # JSON serialization
 │   ├── ApiResponseHandler.cs
+│   ├── Converters.cs      # WPF value converters
 │   └── SecurityHelper.cs
 ├── App.xaml              # Application entry point
 ├── App.xaml.cs           # Application logic
@@ -405,7 +466,18 @@ When reporting issues, please include:
 
 ## 🔄 Changelog
 
-### Version 2.0.0 (Current)
+### Version 2.1.0 (Current)
+- **NEW**: Added comprehensive ticket management functionality
+- **NEW**: Integrated ERPNext ticket viewing and usage
+- **NEW**: Fingerprint-secured ticket operations (individual and bulk)
+- **NEW**: Real-time ticket summary and status updates
+- **IMPROVED**: Enhanced user tracking with proper ERPNext user ID retrieval
+- **FIXED**: Ticket "used_in" field now uses correct ERPNext user ID instead of username
+- **ADDED**: GetCurrentUserAsync method for dynamic user ID retrieval from ERPNext
+- **ENHANCED**: Better error handling for ticket operations
+- **UPDATED**: UI with new Tickets tab and comprehensive ticket management interface
+
+### Version 2.0.0
 - Added modern login system with session management
 - Implemented comprehensive logging with Serilog
 - Enhanced error handling and user feedback
