@@ -31,12 +31,6 @@ namespace ERPNextFingerprintApp.Services
             {
                 Timeout = TimeSpan.FromSeconds(_config.ConnectionTimeout)
             };
-
-            // Only set API key authorization if not using session authentication
-            if (!_isSessionAuthenticated && !string.IsNullOrEmpty(_config.AuthorizationHeader))
-            {
-                _httpClient.DefaultRequestHeaders.Add("Authorization", _config.AuthorizationHeader);
-            }
             
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "ERPNext-Fingerprint-App/1.0");
         }

@@ -1,0 +1,30 @@
+{
+  // ERPNext Server Configuration
+  // Replace with your actual ERPNext server URL (must include https://)
+  "erp_url": "https://your-erpnext-domain.com",
+  
+  // Logging Configuration
+  // Path where log files will be stored (relative to application directory)
+  // Logs are rotated daily with 30-day retention
+  "log_path": ".\\logs\\FingerprintApp.log",
+  
+  // Fingerprint System Configuration
+  // Enable caching of fingerprint data for faster verification
+  // Recommended: true for better performance
+  "fingerprint_cache_enabled": true,
+  
+  // ERPNext Integration Settings
+  // Automatically save enrollment and verification data to ERPNext
+  // Set to false if you want manual control over data saving
+  "auto_save_to_erpnext": true,
+  
+  // Network Configuration
+  // Timeout for API requests in seconds
+  // Increase if you have slow network connection
+  "connection_timeout": 30,
+  
+  // Error Handling Configuration
+  // Maximum number of retry attempts for failed API requests
+  // Recommended: 3 for good balance between reliability and performance
+  "max_retry_attempts": 3
+}

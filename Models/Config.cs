@@ -9,8 +9,6 @@ namespace ERPNextFingerprintApp.Models
     public class Config : INotifyPropertyChanged
     {
         private string _erpUrl = string.Empty;
-        private string _apiKey = string.Empty;
-        private string _apiSecret = string.Empty;
         private string _logPath = "C:\\Logs\\FingerprintApp.log";
         private bool _fingerprintCacheEnabled = true;
         private bool _autoSaveToERPNext = true;
@@ -22,20 +20,6 @@ namespace ERPNextFingerprintApp.Models
         {
             get => _erpUrl;
             set => SetProperty(ref _erpUrl, value);
-        }
-
-        [JsonProperty("api_key")]
-        public string ApiKey
-        {
-            get => _apiKey;
-            set => SetProperty(ref _apiKey, value);
-        }
-
-        [JsonProperty("api_secret")]
-        public string ApiSecret
-        {
-            get => _apiSecret;
-            set => SetProperty(ref _apiSecret, value);
         }
 
         [JsonProperty("log_path")]
@@ -72,8 +56,6 @@ namespace ERPNextFingerprintApp.Models
             get => _maxRetryAttempts;
             set => SetProperty(ref _maxRetryAttempts, value);
         }
-
-        public string AuthorizationHeader => $"token {ApiKey}:{ApiSecret}";
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
