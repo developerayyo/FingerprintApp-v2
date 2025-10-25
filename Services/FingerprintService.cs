@@ -517,11 +517,7 @@ namespace ERPNextFingerprintApp.Services
             }
         }
 
-        public void ClearCache()
-        {
-            _fingerprintCache.Clear();
-            Log.Information("Fingerprint cache cleared");
-        }
+
 
         /// <summary>
         /// Public method to reset service state after operations
@@ -551,11 +547,7 @@ namespace ERPNextFingerprintApp.Services
         /// <summary>
         /// Check if the U.are.U 4500 device is connected and ready
         /// </summary>
-        public async Task<bool> IsDeviceReadyAsync()
-        {
-            var deviceInfo = GetDeviceInfo();
-            return deviceInfo.IsConnected && deviceInfo.IsUareU4500;
-        }
+
 
         /// <summary>
         /// Log detailed SDK installation status

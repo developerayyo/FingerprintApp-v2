@@ -18,6 +18,10 @@ namespace ERPNextFingerprintApp.Services
         private readonly HttpClient _httpClient;
         private readonly Config _config;
         private bool _disposed = false;
+        private string? _sessionId;
+        private bool _isSessionAuthenticated = false;
+
+        public bool IsAuthenticated => _isSessionAuthenticated && !string.IsNullOrEmpty(_sessionId);
 
         public ERPNextApiService(Config config)
         {
@@ -28,8 +32,158 @@ namespace ERPNextFingerprintApp.Services
                 Timeout = TimeSpan.FromSeconds(_config.ConnectionTimeout)
             };
 
-            _httpClient.DefaultRequestHeaders.Add("Authorization", _config.AuthorizationHeader);
+            // Only set API key authorization if not using session authentication
+            if (!_isSessionAuthenticated && !string.IsNullOrEmpty(_config.AuthorizationHeader))
+            {
+                _httpClient.DefaultRequestHeaders.Add("Authorization", _config.AuthorizationHeader);
+            }
+            
             _httpClient.DefaultRequestHeaders.Add("User-Agent", "ERPNext-Fingerprint-App/1.0");
+        }
+
+        public async Task<bool> LoginAsync(string username, string password)
+        {
+            const string endpoint = "/api/method/login";
+            var url = $"{_config.ErpUrl}{endpoint}";
+
+            try
+            {
+                Log.Information("Attempting login for user: {Username}", username);
+
+                // Clear any existing session
+                ClearSession();
+
+                // Prepare login data
+                var loginData = new List<KeyValuePair<string, string>>
+                {
+                    new KeyValuePair<string, string>("usr", username),
+                    new KeyValuePair<string, string>("pwd", password)
+                };
+
+                var formContent = new FormUrlEncodedContent(loginData);
+
+                var response = await _httpClient.PostAsync(url, formContent);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
+                    response.IsSuccessStatusCode ? null : responseContent);
+
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return false;
+                }
+
+                if (response.IsSuccessStatusCode)
+                {
+                    // Extract session ID from Set-Cookie header
+                    if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+                    {
+                        foreach (var cookie in cookies)
+                        {
+                            if (cookie.StartsWith("sid="))
+                            {
+                                var sidValue = cookie.Split(';')[0].Substring(4); // Remove "sid=" prefix
+                                _sessionId = sidValue;
+                                _isSessionAuthenticated = true;
+                                
+                                // Remove API key authorization and set up session authentication
+                                _httpClient.DefaultRequestHeaders.Remove("Authorization");
+                                
+                                Log.Information("Login successful for user: {Username}, Session ID: {SessionId}", username, _sessionId?.Substring(0, 8) + "...");
+                                return true;
+                            }
+                        }
+                    }
+
+                    Log.Warning("Login response was successful but no session ID found in cookies");
+                    return false;
+                }
+
+                Log.Warning("Login failed for user: {Username}, Status: {StatusCode}, Response: {Response}", 
+                    username, response.StatusCode, responseContent);
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error during login for user: {Username}", username);
+                return false;
+            }
+        }
+
+        public async Task<bool> LogoutAsync()
+        {
+            if (!_isSessionAuthenticated || string.IsNullOrEmpty(_sessionId))
+            {
+                Log.Information("No active session to logout");
+                return true;
+            }
+
+            const string endpoint = "/api/method/logout";
+            var url = $"{_config.ErpUrl}{endpoint}";
+
+            try
+            {
+                Log.Information("Logging out current session");
+
+                var response = await _httpClient.PostAsync(url, null);
+                var responseContent = await response.Content.ReadAsStringAsync();
+
+                LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
+                    response.IsSuccessStatusCode ? null : responseContent);
+
+                // Clear session regardless of response status
+                ClearSession();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    Log.Information("Logout successful");
+                    return true;
+                }
+
+                Log.Warning("Logout request failed but session cleared locally: {Response}", responseContent);
+                return true; // Return true since we cleared the session locally
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex, "Error during logout");
+                ClearSession(); // Clear session even if logout request failed
+                return true;
+            }
+        }
+
+        private void ClearSession()
+        {
+            _sessionId = null;
+            _isSessionAuthenticated = false;
+            
+            // Remove any existing cookie headers
+            _httpClient.DefaultRequestHeaders.Remove("Cookie");
+            
+            Log.Debug("Session cleared");
+        }
+
+        private void EnsureSessionAuthentication()
+        {
+            if (_isSessionAuthenticated && !string.IsNullOrEmpty(_sessionId))
+            {
+                // Remove existing cookie header if present
+                _httpClient.DefaultRequestHeaders.Remove("Cookie");
+                
+                // Add session cookie
+                _httpClient.DefaultRequestHeaders.Add("Cookie", $"sid={_sessionId}");
+            }
+        }
+
+        private async Task<bool> HandleSessionExpiration(System.Net.HttpStatusCode statusCode)
+        {
+            if (statusCode == System.Net.HttpStatusCode.Unauthorized || statusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                Log.Warning("Session appears to be expired (Status: {StatusCode}), clearing session", statusCode);
+                ClearSession();
+                return true; // Indicates session was expired
+            }
+            return false;
         }
 
         public async Task<ApiResult<List<Employee>>> GetEmployeesAsync()
@@ -43,11 +197,20 @@ namespace ERPNextFingerprintApp.Services
             {
                 Log.Information("Fetching employees from ERPNext: {Url}", url);
                 
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
+                
                 var response = await _httpClient.GetAsync(url);
                 var content = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "GET", response.IsSuccessStatusCode, 
                     response.IsSuccessStatusCode ? null : content);
+
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return ApiResult<List<Employee>>.Failure("Session expired. Please login again.");
+                }
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -77,11 +240,20 @@ namespace ERPNextFingerprintApp.Services
             {
                 Log.Information("Fetching employee {EmployeeId} from ERPNext", employeeId);
                 
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
+                
                 var response = await _httpClient.GetAsync(url);
                 var content = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "GET", response.IsSuccessStatusCode, 
                     response.IsSuccessStatusCode ? null : content);
+
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return ApiResult<Employee>.Failure("Session expired. Please login again.");
+                }
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -113,6 +285,9 @@ namespace ERPNextFingerprintApp.Services
                 Log.Information("Updating fingerprint template for employee {EmployeeId} using standard ERPNext API", employeeId);
                 Log.Debug("Original fingerprint template length: {Length} characters", fingerprintTemplate?.Length ?? 0);
 
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
+
                 // Store the full fingerprint template without processing
                 Log.Debug("Storing full fingerprint template length: {Length} characters", fingerprintTemplate?.Length ?? 0);
 
@@ -134,6 +309,12 @@ namespace ERPNextFingerprintApp.Services
                 LoggerService.LogApiCall(endpoint, "PUT", response.IsSuccessStatusCode, 
                     response.IsSuccessStatusCode ? null : responseContent);
 
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return ApiResult<bool>.Failure("Session expired. Please login again.");
+                }
+
                 if (response.IsSuccessStatusCode)
                 {
                     Log.Information("Successfully updated fingerprint template for employee {EmployeeId}", employeeId);
@@ -149,48 +330,7 @@ namespace ERPNextFingerprintApp.Services
             }
         }
 
-        private string ProcessFingerprintForStorage(string fingerprintTemplate)
-        {
-            try
-            {
-                if (string.IsNullOrEmpty(fingerprintTemplate))
-                    return fingerprintTemplate;
 
-                Log.Debug("Processing fingerprint template for storage. Original length: {Length}", fingerprintTemplate.Length);
-
-                // First, try compression
-                var compressed = CompressFingerprintTemplate(fingerprintTemplate);
-                Log.Debug("After compression: {Length} characters", compressed?.Length ?? 0);
-
-                // If still too long for ERPNext custom field, truncate with hash
-                const int maxFieldLength = 140; // Conservative limit for ERPNext custom fields
-                
-                if (compressed.Length <= maxFieldLength)
-                {
-                    Log.Debug("Compressed template fits in field limit");
-                    return compressed;
-                }
-
-                // If compression isn't enough, create a truncated version with hash for verification
-                var truncated = compressed.Substring(0, maxFieldLength - 32); // Reserve 32 chars for hash
-                var hash = SecurityHelper.ComputeSHA256Hash(fingerprintTemplate).Substring(0, 32);
-                var result = truncated + hash;
-
-                Log.Warning("Fingerprint template too large ({Length} chars), truncated to {TruncatedLength} chars with hash", 
-                    compressed.Length, result.Length);
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to process fingerprint template, using truncated original");
-                // Fallback: just truncate the original if all else fails
-                const int fallbackLength = 140;
-                return fingerprintTemplate.Length > fallbackLength 
-                    ? fingerprintTemplate.Substring(0, fallbackLength)
-                    : fingerprintTemplate;
-            }
-        }
 
         private string CompressFingerprintTemplate(string fingerprintTemplate)
         {
@@ -238,6 +378,9 @@ namespace ERPNextFingerprintApp.Services
                 Log.Debug("Fingerprint template being sent - Length: {Length}, First 100 chars: {Template}", 
                     fingerprintTemplate?.Length ?? 0, 
                     fingerprintTemplate?.Length > 100 ? fingerprintTemplate.Substring(0, 100) + "..." : fingerprintTemplate);
+
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
 
                 var verificationData = new
                 {
@@ -331,51 +474,6 @@ namespace ERPNextFingerprintApp.Services
             }
         }
 
-        public async Task<ApiResult<bool>> CreateDeductionRecordAsync(DeductionRecord deduction)
-        { 
-            const string endpoint = "/api/resource/Employee Deduction";
-            var url = $"{_config.ErpUrl}{endpoint}";
-
-            try
-            {
-                Log.Information("Creating deduction record for employee {Employee}", deduction.Employee);
-
-                var deductionData = new
-                {
-                    employee = deduction.Employee,
-                    deduction_type = deduction.DeductionType.ToString().ToUpper(),
-                    amount = deduction.Amount,
-                    description = deduction.Description,
-                    transaction_date = deduction.Timestamp.ToString("yyyy-MM-dd"),
-                    transaction_time = deduction.Timestamp.ToString("HH:mm:ss")
-                };
-
-                var json = JsonHelper.SerializeObject(deductionData);
-                var content = new StringContent(json, Encoding.UTF8, "application/json");
-
-                var response = await _httpClient.PostAsync(url, content);
-                var responseContent = await response.Content.ReadAsStringAsync();
-
-                LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
-                    response.IsSuccessStatusCode ? null : responseContent);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    LoggerService.LogDeductionProcessing(deduction, true);
-                    return ApiResult<bool>.Success(true);
-                }
-
-                LoggerService.LogDeductionProcessing(deduction, false, responseContent);
-                return ApiResult<bool>.Failure($"Failed to create deduction: {responseContent}", response.StatusCode);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to create deduction record for employee {Employee}", deduction.Employee);
-                LoggerService.LogDeductionProcessing(deduction, false, ex.Message);
-                return ApiResult<bool>.Failure($"Network error: {ex.Message}");
-            }
-        }
-
         public async Task<ApiResult<string>> CreateDeductionAsync(string employeeId, string deductionType, decimal amount, string description)
         {
             const string endpoint = "/api/resource/Deductions";
@@ -385,6 +483,9 @@ namespace ERPNextFingerprintApp.Services
             {
                 Log.Information("Creating deduction for employee {EmployeeId} - Type: {DeductionType}, Amount: {Amount}", 
                     employeeId, deductionType, amount);
+
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
 
                 var deductionData = new
                 {
@@ -401,6 +502,12 @@ namespace ERPNextFingerprintApp.Services
 
                 LoggerService.LogApiCall(endpoint, "POST", response.IsSuccessStatusCode, 
                     response.IsSuccessStatusCode ? null : responseContent);
+
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return ApiResult<string>.Failure("Session expired. Please login again.");
+                }
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -432,11 +539,20 @@ namespace ERPNextFingerprintApp.Services
             {
                 Log.Information("Testing ERPNext connection");
                 
+                // Ensure session authentication is set
+                EnsureSessionAuthentication();
+                
                 var response = await _httpClient.GetAsync(url);
                 var content = await response.Content.ReadAsStringAsync();
 
                 LoggerService.LogApiCall(endpoint, "GET", response.IsSuccessStatusCode, 
                     response.IsSuccessStatusCode ? null : content);
+
+                // Handle session expiration
+                if (await HandleSessionExpiration(response.StatusCode))
+                {
+                    return ApiResult<bool>.Failure("Session expired. Please login again.");
+                }
 
                 if (response.IsSuccessStatusCode)
                 {

@@ -52,25 +52,7 @@ namespace ERPNextFingerprintApp.Utils
             }
         }
 
-        public static ApiResult<string> HandleStringResponse(HttpResponseMessage response, string content)
-        {
-            try
-            {
-                if (response.IsSuccessStatusCode)
-                {
-                    return ApiResult<string>.Success(content);
-                }
 
-                var errorMessage = $"API request failed with status {response.StatusCode}: {response.ReasonPhrase}";
-                Log.Error("API Error: {StatusCode} - {ErrorMessage}", response.StatusCode, errorMessage);
-                return ApiResult<string>.Failure(errorMessage, response.StatusCode);
-            }
-            catch (Exception ex)
-            {
-                Log.Error(ex, "Failed to handle string API response");
-                return ApiResult<string>.Failure($"Failed to process response: {ex.Message}");
-            }
-        }
     }
 
     public class ApiResult<T>

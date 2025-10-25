@@ -1,0 +1,200 @@
+<Window x:Class="ERPNextFingerprintApp.Views.LoginWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="ERPNext Login - Fingerprint Integration"
+        Height="500" Width="450"
+        WindowStartupLocation="CenterScreen"
+        ResizeMode="NoResize"
+        Background="#F5F5F5"
+        WindowStyle="SingleBorderWindow">
+
+    <Window.Resources>
+        <!-- Modern Button Style -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#007ACC"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#005A9E"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="#004578"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#CCCCCC"/>
+                                <Setter Property="Foreground" Value="#666666"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern TextBox Style -->
+        <Style x:Key="ModernTextBoxStyle" TargetType="TextBox">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#007ACC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Modern PasswordBox Style -->
+        <Style x:Key="ModernPasswordBoxStyle" TargetType="PasswordBox">
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#DDDDDD"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="PasswordBox">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ScrollViewer x:Name="PART_ContentHost"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#007ACC"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Main Content -->
+        <Border 
+                Background="White" 
+                Margin="30,20,30,10" 
+                CornerRadius="8">
+            <Border.Effect>
+                <DropShadowEffect Color="Black" Opacity="0.1" ShadowDepth="2" BlurRadius="8"/>
+            </Border.Effect>
+            
+            <StackPanel Margin="30,20">
+                <!-- Header -->
+                <TextBlock Text="ERPNext Login"
+                          FontSize="24"
+                          FontWeight="Bold"
+                          Foreground="#333333"
+                          HorizontalAlignment="Center"
+                          Margin="0,0,0,10"/>
+                
+                <TextBlock Text="Fingerprint Integration System"
+                          FontSize="14"
+                          Foreground="#666666"
+                          HorizontalAlignment="Center"
+                          Margin="0,0,0,20"/>
+
+                <!-- Username Field -->
+                <Label Content="Username:"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="#333333"
+                       Margin="0,0,0,5"/>
+                
+                <TextBox x:Name="UsernameTextBox"
+                         Style="{StaticResource ModernTextBoxStyle}"
+                         Margin="0,0,0,15"
+                         TabIndex="1"/>
+
+                <!-- Password Field -->
+                <Label Content="Password:"
+                       FontSize="14"
+                       FontWeight="SemiBold"
+                       Foreground="#333333"
+                       Margin="0,0,0,5"/>
+                
+                <PasswordBox x:Name="PasswordBox"
+                            Style="{StaticResource ModernPasswordBoxStyle}"
+                            Margin="0,0,0,15"
+                            TabIndex="2"/>
+
+                <!-- Login Button -->
+                <Button x:Name="LoginButton"
+                        Content="Login"
+                        Style="{StaticResource ModernButtonStyle}"
+                        Height="40"
+                        Margin="0,0,0,15"
+                        Click="LoginButton_Click"
+                        TabIndex="3"/>
+
+                <!-- Status Message -->
+                <TextBlock x:Name="StatusTextBlock"
+                          FontSize="13"
+                          HorizontalAlignment="Center"
+                          TextWrapping="Wrap"
+                          Margin="0,10,0,0"
+                          Visibility="Collapsed"/>
+
+                <!-- Loading Indicator -->
+                <StackPanel x:Name="LoadingPanel"
+                           Orientation="Horizontal"
+                           HorizontalAlignment="Center"
+                           Margin="0,10,0,0"
+                           Visibility="Collapsed">
+                    <TextBlock Text="Logging in..."
+                              FontSize="13"
+                              Foreground="#666666"
+                              VerticalAlignment="Center"
+                              Margin="0,0,10,0"/>
+                    <ProgressBar Width="100"
+                                Height="4"
+                                IsIndeterminate="True"
+                                VerticalAlignment="Center"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Footer -->
+        <TextBlock Grid.Row="1"
+                   Text="Lord's Mint Tech Nig Ltd"
+                   FontSize="12"
+                   Foreground="#999999"
+                   HorizontalAlignment="Center"
+                   Margin="0,0,0,20"/>
+    </Grid>
+</Window>

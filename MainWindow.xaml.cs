@@ -13,12 +13,14 @@ namespace ERPNextFingerprintApp
     {
         private readonly RegistrationViewModel _registrationViewModel;
         private readonly VerificationViewModel _verificationViewModel;
+        private readonly ERPNextApiService _apiService;
         private readonly DispatcherTimer _timeTimer;
         private readonly DispatcherTimer _heartbeatTimer;
 
         public MainWindow(
             RegistrationViewModel registrationViewModel,
-            VerificationViewModel verificationViewModel)
+            VerificationViewModel verificationViewModel,
+            ERPNextApiService apiService)
         {
             try
             {
@@ -29,6 +31,7 @@ namespace ERPNextFingerprintApp
 
                 _registrationViewModel = registrationViewModel;
                 _verificationViewModel = verificationViewModel;
+                _apiService = apiService;
 
                 // Set up ViewModels
                 DataContext = this;
@@ -438,5 +441,54 @@ namespace ERPNextFingerprintApp
         // Properties for data binding
         public RegistrationViewModel RegistrationViewModel => _registrationViewModel;
         public VerificationViewModel VerificationViewModel => _verificationViewModel;
+
+        private async void LogoutButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                LoggerService.LogWindowEvent("MainWindow", "Logout Initiated");
+
+                // Show confirmation dialog
+                var result = MessageBox.Show(
+                    "Are you sure you want to logout?", 
+                    "Confirm Logout", 
+                    MessageBoxButton.YesNo, 
+                    MessageBoxImage.Question);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    // Perform logout
+                    await _apiService.LogoutAsync();
+                    LoggerService.LogWindowEvent("MainWindow", "Logout Completed");
+
+                    // Create and show login window
+                    var loginWindow = App.ServiceProvider.GetRequiredService<Views.LoginWindow>();
+                    
+                    // Set the login window as the application's main window
+                    Application.Current.MainWindow = loginWindow;
+                    loginWindow.Show();
+                    
+                    // Close the main window
+                    this.Close();
+                    
+                    Log.Information("User logged out successfully and returned to login screen");
+                }
+                else
+                {
+                    LoggerService.LogWindowEvent("MainWindow", "Logout Cancelled");
+                }
+            }
+            catch (Exception ex)
+            {
+                LoggerService.LogException(ex, "Logout Process");
+                Log.Error(ex, "Error during logout process");
+                
+                MessageBox.Show(
+                    $"An error occurred during logout: {ex.Message}", 
+                    "Logout Error", 
+                    MessageBoxButton.OK, 
+                    MessageBoxImage.Error);
+            }
+        }
     }
 }

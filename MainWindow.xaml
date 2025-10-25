@@ -36,7 +36,7 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Right">
-                    <!-- Top row: Connection and Time -->
+                    <!-- Top row: Connection, Time, and Logout -->
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,4">
                         <TextBlock x:Name="ConnectionStatusText" 
                                  Text="● Connected" 
@@ -48,7 +48,46 @@
                                  Text="{Binding Source={x:Static sys:DateTime.Now}, StringFormat='HH:mm:ss'}" 
                                  Foreground="White" 
                                  FontSize="12" 
-                                 VerticalAlignment="Center"/>
+                                 VerticalAlignment="Center"
+                                 Margin="0,0,16,0"/>
+                        <Button x:Name="LogoutButton"
+                              Content="🚪 Logout"
+                              Background="Transparent"
+                              BorderBrush="White"
+                              BorderThickness="1"
+                              Foreground="White"
+                              FontSize="11"
+                              Padding="8,4"
+                              VerticalAlignment="Center"
+                              Click="LogoutButton_Click"
+                              ToolTip="Logout and return to login screen">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                                      BorderThickness="{TemplateBinding BorderThickness}"
+                                                      CornerRadius="4"
+                                                      Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" 
+                                                                    VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#33FFFFFF"/>
+                                                    </Trigger>
+                                                    <Trigger Property="IsPressed" Value="True">
+                                                        <Setter Property="Background" Value="#66FFFFFF"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </StackPanel>
                     
                     <!-- Bottom row: SDK and Device Status -->

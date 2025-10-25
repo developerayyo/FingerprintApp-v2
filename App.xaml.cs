@@ -8,6 +8,7 @@ using ERPNextFingerprintApp.Models;
 using ERPNextFingerprintApp.Services;
 using ERPNextFingerprintApp.ViewModels;
 using ERPNextFingerprintApp.Utils;
+using ERPNextFingerprintApp.Views;
 using System.Diagnostics;
 
 namespace ERPNextFingerprintApp
@@ -67,17 +68,17 @@ namespace ERPNextFingerprintApp
                 ServiceProvider = _host.Services;
                 Log.Information("Service provider set successfully");
 
-                // Create and show main window
-                Log.Information("Creating main window...");
-                Console.WriteLine("Creating main window...");
-                var mainWindow = ServiceProvider.GetRequiredService<MainWindow>();
-                Log.Information("Main window created successfully");
+                // Create and show login window
+                Log.Information("Creating login window...");
+                Console.WriteLine("Creating login window...");
+                var loginWindow = ServiceProvider.GetRequiredService<LoginWindow>();
+                Log.Information("Login window created successfully");
                 
-                LoggerService.LogWindowEvent("MainWindow", "Created");
+                LoggerService.LogWindowEvent("LoginWindow", "Created");
                 
-                Console.WriteLine("Showing main window...");
-                mainWindow.Show();
-                LoggerService.LogWindowEvent("MainWindow", "Shown");
+                Console.WriteLine("Showing login window...");
+                loginWindow.Show();
+                LoggerService.LogWindowEvent("LoginWindow", "Shown");
                 
                 Log.Information("Application startup completed successfully in {ElapsedMs}ms", stopwatch.ElapsedMilliseconds);
                 LoggerService.LogApplicationReady();
@@ -146,7 +147,8 @@ namespace ERPNextFingerprintApp
                     services.AddTransient<RegistrationViewModel>();
                     services.AddTransient<VerificationViewModel>();
 
-                    // Register MainWindow
+                    // Register Windows
+                    services.AddTransient<LoginWindow>();
                     services.AddTransient<MainWindow>();
                 });
 
