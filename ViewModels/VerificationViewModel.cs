@@ -180,19 +180,8 @@ namespace ERPNextFingerprintApp.ViewModels
                 IsProcessEnabled = false;
                 StatusMessage = "Place finger on scanner for verification...";
 
-                // Capture fingerprint for verification
-                var captureResult = await _fingerprintService.CaptureAsync();
-                if (!captureResult.IsSuccess)
-                {
-                    StatusMessage = $"Fingerprint capture failed: {captureResult.ErrorMessage}";
-                    Log.Warning("Fingerprint capture failed: {Error}", captureResult.ErrorMessage);
-                    return;
-                }
-
+                // Use the same verification method as Tickets (which works reliably)
                 StatusMessage = "Verifying fingerprint and processing deduction...";
-
-                // Perform local fingerprint verification using FingerprintService
-                StatusMessage = "Verifying fingerprint locally...";
                 var verificationResult = await _fingerprintService.VerifyAsync(_employees);
 
                 if (verificationResult.IsSuccess && verificationResult.MatchedEmployee != null)
@@ -246,7 +235,7 @@ namespace ERPNextFingerprintApp.ViewModels
                     }
 
                     // Reset for next transaction after showing success message
-                    await Task.Delay(3000);
+                    await Task.Delay(1000);
                     ResetVerification();
                 }
                 else
@@ -265,16 +254,6 @@ namespace ERPNextFingerprintApp.ViewModels
             {
                 IsLoading = false;
                 IsScanEnabled = true;
-                
-                // Reset service state to prevent hanging on subsequent operations
-                try
-                {
-                    await _fingerprintService.ResetServiceStateAsync();
-                }
-                catch (Exception resetEx)
-                {
-                    Log.Warning(resetEx, "Error resetting fingerprint service state after verification");
-                }
             }
         }
 

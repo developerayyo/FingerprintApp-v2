@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using Serilog;
 using DPUruNet;
@@ -8,6 +9,25 @@ using ERPNextFingerprintApp.Models;
 
 namespace ERPNextFingerprintApp.Services
 {
+    /// <summary>
+    /// Event args for fingerprint capture with quality information
+    /// </summary>
+    public class FingerprintCaptureEventArgs : EventArgs
+    {
+        public byte[] FingerprintData { get; }
+        public int QualityScore { get; }
+        public string QualityFeedback { get; }
+        public Constants.CaptureQuality SdkQuality { get; }
+
+        public FingerprintCaptureEventArgs(byte[] fingerprintData, int qualityScore, string qualityFeedback, Constants.CaptureQuality sdkQuality)
+        {
+            FingerprintData = fingerprintData;
+            QualityScore = qualityScore;
+            QualityFeedback = qualityFeedback;
+            SdkQuality = sdkQuality;
+        }
+    }
+
     /// <summary>
     /// DigitalPersona OneTouch SDK wrapper for U.are.U 4500 fingerprint scanner
     /// </summary>
@@ -19,6 +39,10 @@ namespace ERPNextFingerprintApp.Services
         private bool _isInitialized;
         private bool _isCapturing;
         private bool _disposed;
+        
+        // Template cache for large dataset optimization
+        private readonly Dictionary<string, Fmd> _templateCache = new Dictionary<string, Fmd>();
+        private readonly object _cacheLock = new object();
 
         /// <summary>
         /// Event fired when status changes
@@ -28,7 +52,7 @@ namespace ERPNextFingerprintApp.Services
         /// <summary>
         /// Event fired when fingerprint is captured
         /// </summary>
-        public event EventHandler<byte[]> FingerprintCaptured;
+        public event EventHandler<FingerprintCaptureEventArgs> FingerprintCaptured;
 
         public DigitalPersonaSDK(ILogger logger)
         {
@@ -222,6 +246,119 @@ namespace ERPNextFingerprintApp.Services
         }
 
         /// <summary>
+        /// Check the device status before starting capture operations.
+        /// This follows the SDK example pattern for proper device management.
+        /// </summary>
+        /// <returns>True if device is ready for capture, false otherwise</returns>
+        public async Task<bool> GetStatusAsync()
+        {
+            try
+            {
+                if (_currentReader == null)
+                {
+                    _logger.Warning("Cannot check status - no reader available");
+                    return false;
+                }
+
+                _logger.Debug("Checking reader status...");
+                Constants.ResultCode result = _currentReader.GetStatus();
+
+                if (result != Constants.ResultCode.DP_SUCCESS)
+                {
+                    _logger.Error("Failed to get reader status. Result: {Result}", result);
+                    StatusChanged?.Invoke(this, $"Status check failed: {result}");
+                    return false;
+                }
+
+                var status = _currentReader.Status.Status;
+                _logger.Debug("Reader status: {Status}", status);
+
+                switch (status)
+                {
+                    case Constants.ReaderStatuses.DP_STATUS_READY:
+                        _logger.Debug("Reader is ready for capture");
+                        return true;
+
+                    case Constants.ReaderStatuses.DP_STATUS_BUSY:
+                        _logger.Debug("Reader is busy, waiting...");
+                        StatusChanged?.Invoke(this, "Device busy, waiting...");
+                        await Task.Delay(50); // Follow SDK example pattern
+                        // Recursive call to check again after delay
+                        return await GetStatusAsync();
+
+                    case Constants.ReaderStatuses.DP_STATUS_NEED_CALIBRATION:
+                        _logger.Information("Reader needs calibration, performing calibration...");
+                        StatusChanged?.Invoke(this, "Calibrating device...");
+                        
+                        var calibrationResult = _currentReader.Calibrate();
+                        if (calibrationResult != Constants.ResultCode.DP_SUCCESS)
+                        {
+                            _logger.Error("Calibration failed. Result: {Result}", calibrationResult);
+                            StatusChanged?.Invoke(this, $"Calibration failed: {calibrationResult}");
+                            return false;
+                        }
+                        
+                        _logger.Information("Calibration completed successfully");
+                        StatusChanged?.Invoke(this, "Calibration completed");
+                        
+                        // Wait a moment after calibration then check status again
+                        await Task.Delay(100);
+                        return await GetStatusAsync();
+
+
+
+                    default:
+                        _logger.Warning("Unknown reader status: {Status}", status);
+                        StatusChanged?.Invoke(this, $"Unknown device status: {status}");
+                        return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Exception occurred while checking reader status");
+                StatusChanged?.Invoke(this, "Status check error");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Prepare reader for capture by checking status and handling calibration/busy states.
+        /// This method should be called before any capture operation.
+        /// </summary>
+        /// <returns>True if reader is ready for capture, false otherwise</returns>
+        public async Task<bool> PrepareReaderForCaptureAsync()
+        {
+            if (!_isInitialized)
+            {
+                _logger.Warning("SDK not initialized, cannot prepare reader for capture");
+                return false;
+            }
+
+            if (_currentReader == null)
+            {
+                _logger.Warning("No reader available for capture preparation");
+                return false;
+            }
+
+            _logger.Debug("Preparing reader for capture...");
+            
+            // Check status and handle calibration/busy states
+            bool isReady = await GetStatusAsync();
+            
+            if (isReady)
+            {
+                _logger.Debug("Reader is ready for capture");
+                StatusChanged?.Invoke(this, "Device ready for capture");
+            }
+            else
+            {
+                _logger.Warning("Reader is not ready for capture");
+            }
+            
+            return isReady;
+        }
+
+        /// <summary>
         /// Start fingerprint capture with retry logic for device busy errors
         /// </summary>
         public async Task<bool> StartCaptureAsync()
@@ -247,31 +384,28 @@ namespace ERPNextFingerprintApp.Services
                     }
 
                     _logger.Information("Starting fingerprint capture (attempt {Attempt}/{MaxRetries})...", attempt, maxRetries);
-                    StatusChanged?.Invoke(this, "Place finger on scanner...");
-
-                    // Ensure device is ready before starting capture
-                    await EnsureDeviceReadyAsync();
-
-                    // Hook up capture handler
-                    _currentReader.On_Captured += OnCaptured;
-
-                    // Check device status
-                    Constants.ResultCode statusResult = _currentReader.GetStatus();
-                    if (statusResult != Constants.ResultCode.DP_SUCCESS)
+                    
+                    // Prepare reader for capture (includes status check, calibration, and busy handling)
+                    bool isReaderReady = await PrepareReaderForCaptureAsync();
+                    if (!isReaderReady)
                     {
-                        _logger.Error($"Device status check failed: {statusResult}");
-                        _currentReader.On_Captured -= OnCaptured;
+                        _logger.Error("Reader is not ready for capture on attempt {Attempt}", attempt);
                         
                         if (attempt < maxRetries)
                         {
-                            _logger.Information("Retrying after device status failure...");
+                            _logger.Information("Retrying after reader preparation failure...");
                             await Task.Delay(retryDelayMs);
                             continue;
                         }
                         
-                        StatusChanged?.Invoke(this, $"Device not ready: {statusResult}");
+                        StatusChanged?.Invoke(this, "Device not ready for capture");
                         return false;
                     }
+
+                    StatusChanged?.Invoke(this, "Place finger on scanner...");
+
+                    // Hook up capture handler
+                    _currentReader.On_Captured += OnCaptured;
 
                     // Start capture
                     Constants.ResultCode result = _currentReader.CaptureAsync(
@@ -478,7 +612,17 @@ namespace ERPNextFingerprintApp.Services
                 string qualityFeedback = GetQualityFeedback(captureScore, nfiqScore, templateQuality);
                 StatusChanged?.Invoke(this, qualityFeedback);
                 
-                FingerprintCaptured?.Invoke(this, fmdTemplate);
+                // Convert SDK quality to numerical score for better assessment
+                int sdkQualityScore = ConvertSdkQualityToScore(captureResult.Quality);
+                
+                // Use the higher of the two quality scores for better accuracy
+                int finalQualityScore = Math.Max(sdkQualityScore, captureScore);
+                
+                FingerprintCaptured?.Invoke(this, new FingerprintCaptureEventArgs(
+                    fmdTemplate, 
+                    finalQualityScore, 
+                    qualityFeedback, 
+                    captureResult.Quality));
             }
             catch (Exception ex)
             {
@@ -515,23 +659,23 @@ namespace ERPNextFingerprintApp.Services
                 {
                     string qualityMessage = captureResult.Quality switch
                     {
-                        Constants.CaptureQuality.DP_QUALITY_TIMED_OUT => "Capture timed out",
-                        Constants.CaptureQuality.DP_QUALITY_CANCELED => "Capture was canceled",
-                        Constants.CaptureQuality.DP_QUALITY_NO_FINGER => "No finger detected",
-                        Constants.CaptureQuality.DP_QUALITY_FAKE_FINGER => "Fake finger detected",
-                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_LEFT => "Finger too far left",
-                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_RIGHT => "Finger too far right",
-                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_HIGH => "Finger too high",
-                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_LOW => "Finger too low",
-                        Constants.CaptureQuality.DP_QUALITY_FINGER_OFF_CENTER => "Finger off center",
-                        Constants.CaptureQuality.DP_QUALITY_SCAN_SKEWED => "Scan skewed",
-                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_SHORT => "Scan too short",
-                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_LONG => "Scan too long",
-                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_SLOW => "Scan too slow",
-                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_FAST => "Scan too fast",
-                        Constants.CaptureQuality.DP_QUALITY_SCAN_WRONG_DIRECTION => "Scan wrong direction",
-                        Constants.CaptureQuality.DP_QUALITY_READER_DIRTY => "Reader needs cleaning",
-                        _ => $"Poor quality capture: {captureResult.Quality}"
+                        Constants.CaptureQuality.DP_QUALITY_TIMED_OUT => "Capture timed out - place finger on scanner within 10 seconds",
+                        Constants.CaptureQuality.DP_QUALITY_CANCELED => "Capture was canceled - please try again",
+                        Constants.CaptureQuality.DP_QUALITY_NO_FINGER => "No finger detected - place finger firmly on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_FAKE_FINGER => "Invalid finger detected - use a real finger",
+                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_LEFT => "Move finger to the right and center on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_RIGHT => "Move finger to the left and center on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_HIGH => "Move finger down and center on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_LOW => "Move finger up and center on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_FINGER_OFF_CENTER => "Center finger on scanner and press firmly",
+                        Constants.CaptureQuality.DP_QUALITY_SCAN_SKEWED => "Keep finger straight and aligned on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_SHORT => "Press finger down longer on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_LONG => "Lift finger sooner after placing on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_SLOW => "Place finger more quickly on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_FAST => "Place finger more slowly and hold steady",
+                        Constants.CaptureQuality.DP_QUALITY_SCAN_WRONG_DIRECTION => "Place finger vertically on scanner",
+                        Constants.CaptureQuality.DP_QUALITY_READER_DIRTY => "Clean scanner surface and try again",
+                        _ => $"Poor quality capture - clean finger and scanner, then try again"
                     };
                     
                     _logger.Warning("Capture quality issue: {Quality} - {Message}", captureResult.Quality, qualityMessage);
@@ -855,8 +999,68 @@ namespace ERPNextFingerprintApp.Services
              }
         }
 
+        // SDK Constants for proper threshold calculation
+        private const int DPFJ_PROBABILITY_ONE = 0x7fffffff;
+        
         /// <summary>
-        /// Compare two fingerprint templates using DigitalPersona SDK
+        /// Convert SDK CaptureQuality to numerical score following SDK best practices
+        /// </summary>
+        /// <param name="quality">SDK capture quality enum</param>
+        /// <returns>Quality score from 0-100</returns>
+        private int ConvertSdkQualityToScore(Constants.CaptureQuality quality)
+        {
+            return quality switch
+            {
+                Constants.CaptureQuality.DP_QUALITY_GOOD => 85,
+                Constants.CaptureQuality.DP_QUALITY_TIMED_OUT => 20,
+                Constants.CaptureQuality.DP_QUALITY_CANCELED => 0,
+                Constants.CaptureQuality.DP_QUALITY_NO_FINGER => 0,
+                Constants.CaptureQuality.DP_QUALITY_FAKE_FINGER => 0,
+                Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_LEFT => 40,
+                Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_RIGHT => 40,
+                Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_HIGH => 40,
+                Constants.CaptureQuality.DP_QUALITY_FINGER_TOO_LOW => 40,
+                Constants.CaptureQuality.DP_QUALITY_FINGER_OFF_CENTER => 45,
+                Constants.CaptureQuality.DP_QUALITY_SCAN_SKEWED => 50,
+                Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_SHORT => 35,
+                Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_LONG => 55,
+                Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_SLOW => 50,
+                Constants.CaptureQuality.DP_QUALITY_SCAN_TOO_FAST => 45,
+                Constants.CaptureQuality.DP_QUALITY_SCAN_WRONG_DIRECTION => 40,
+                Constants.CaptureQuality.DP_QUALITY_READER_DIRTY => 25,
+                _ => 30 // Default for unknown quality issues
+            };
+        }
+        
+        /// <summary>
+        /// Check capture quality based on SDK standards
+        /// </summary>
+        /// <param name="captureResult">The capture result to validate</param>
+        /// <returns>True if quality is acceptable, false otherwise</returns>
+        public bool CheckCaptureQuality(CaptureResult captureResult)
+        {
+            if (captureResult.Data == null || captureResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
+            {
+                if (captureResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
+                {
+                    _logger.Warning("Capture failed with result: {Result}", captureResult.ResultCode);
+                    return false;
+                }
+
+                // Check for fake finger or other quality issues
+                if (captureResult.Quality != Constants.CaptureQuality.DP_QUALITY_CANCELED)
+                {
+                    _logger.Warning("Poor capture quality: {Quality}", captureResult.Quality);
+                    return false;
+                }
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Compare two fingerprint templates using DigitalPersona SDK with proper threshold
         /// </summary>
         /// <param name="storedTemplate">Base64 encoded stored template</param>
         /// <param name="capturedTemplate">Captured template as byte array</param>
@@ -932,14 +1136,13 @@ namespace ERPNextFingerprintApp.Services
                     return Task.FromResult(false);
                 }
 
-                // Check dissimilarity score - lower scores indicate better matches
-                // Typical threshold for DigitalPersona is around 2147483647 for no match, 0 for perfect match
-                // A reasonable threshold for matching is usually around 50000-100000
-                const int MATCH_THRESHOLD = 75000;
-                bool isMatch = compareResult.Score < MATCH_THRESHOLD;
+                // Use proper SDK threshold calculation as per DigitalPersona documentation
+                // This is the same threshold used in the official SDK samples
+                int thresholdScore = DPFJ_PROBABILITY_ONE * 1 / 100000; // Approximately 21,474
+                bool isMatch = compareResult.Score < thresholdScore;
 
                 _logger.Information("Template comparison completed - Score: {Score}, Threshold: {Threshold}, Match: {IsMatch}", 
-                    compareResult.Score, MATCH_THRESHOLD, isMatch);
+                    compareResult.Score, thresholdScore, isMatch);
 
                 return Task.FromResult(isMatch);
             }
@@ -947,6 +1150,158 @@ namespace ERPNextFingerprintApp.Services
             {
                 _logger.Error(ex, "Error comparing fingerprint templates");
                 return Task.FromResult(false);
+            }
+        }
+
+        /// <summary>
+        /// Perform 1:N identification using DigitalPersona SDK's optimized Identify method
+        /// This is the proper way to handle large datasets as per SDK documentation
+        /// </summary>
+        /// <param name="capturedTemplate">Base64 encoded captured template</param>
+        /// <param name="storedTemplates">Dictionary of employee name to base64 encoded templates</param>
+        /// <returns>Employee name if match found, null otherwise</returns>
+        public Task<string?> IdentifyTemplateAsync(string capturedTemplate, Dictionary<string, string> storedTemplates)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(capturedTemplate) || storedTemplates == null || storedTemplates.Count == 0)
+                {
+                    _logger.Warning("Invalid parameters for identification");
+                    return Task.FromResult<string?>(null);
+                }
+
+                // Convert captured template
+                byte[] capturedBytes;
+                try
+                {
+                    capturedBytes = Convert.FromBase64String(capturedTemplate);
+                }
+                catch (FormatException ex)
+                {
+                    _logger.Warning(ex, "Failed to decode captured template from base64");
+                    return Task.FromResult<string?>(null);
+                }
+
+                // Validate captured template size
+                const int MIN_VALID_TEMPLATE_SIZE = 200;
+                if (capturedBytes.Length < MIN_VALID_TEMPLATE_SIZE)
+                {
+                    _logger.Warning($"Captured template appears corrupted (size: {capturedBytes.Length} bytes)");
+                    return Task.FromResult<string?>(null);
+                }
+
+                // Create captured FMD
+                Fmd capturedFmd;
+                try
+                {
+                    capturedFmd = new Fmd(capturedBytes, (int)Constants.Formats.Fmd.ANSI, Constants.WRAPPER_VERSION);
+                }
+                catch (Exception ex)
+                {
+                    _logger.Warning(ex, "Failed to create FMD from captured template");
+                    return Task.FromResult<string?>(null);
+                }
+
+                // Convert stored templates to FMD array and track employee names with caching optimization
+                var validTemplates = new List<Fmd>();
+                var employeeNames = new List<string>();
+
+                foreach (var kvp in storedTemplates)
+                {
+                    try
+                    {
+                        if (string.IsNullOrEmpty(kvp.Value))
+                            continue;
+
+                        // Check cache first for performance optimization
+                        Fmd storedFmd;
+                        string cacheKey = $"{kvp.Key}_{kvp.Value.GetHashCode()}";
+                        
+                        lock (_cacheLock)
+                        {
+                            if (_templateCache.TryGetValue(cacheKey, out storedFmd))
+                            {
+                                validTemplates.Add(storedFmd);
+                                employeeNames.Add(kvp.Key);
+                                continue;
+                            }
+                        }
+
+                        // Template not in cache, process it
+                        byte[] storedBytes = Convert.FromBase64String(kvp.Value);
+                        
+                        if (storedBytes.Length < MIN_VALID_TEMPLATE_SIZE)
+                        {
+                            _logger.Debug($"Skipping corrupted template for employee {kvp.Key} (size: {storedBytes.Length} bytes)");
+                            continue;
+                        }
+
+                        storedFmd = new Fmd(storedBytes, (int)Constants.Formats.Fmd.ANSI, Constants.WRAPPER_VERSION);
+                        
+                        // Cache the processed template for future use
+                        lock (_cacheLock)
+                        {
+                            if (!_templateCache.ContainsKey(cacheKey))
+                            {
+                                _templateCache[cacheKey] = storedFmd;
+                                
+                                // Prevent cache from growing too large (limit to 1000 templates)
+                                if (_templateCache.Count > 1000)
+                                {
+                                    var oldestKey = _templateCache.Keys.First();
+                                    _templateCache.Remove(oldestKey);
+                                }
+                            }
+                        }
+                        
+                        validTemplates.Add(storedFmd);
+                        employeeNames.Add(kvp.Key);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Debug(ex, $"Failed to process template for employee {kvp.Key}");
+                        continue;
+                    }
+                }
+
+                if (validTemplates.Count == 0)
+                {
+                    _logger.Warning("No valid templates found for identification");
+                    return Task.FromResult<string?>(null);
+                }
+
+                // Use SDK's optimized Identify method with proper threshold
+                int thresholdScore = DPFJ_PROBABILITY_ONE * 1 / 100000; // Same as SDK sample
+                
+                _logger.Information($"Starting identification against {validTemplates.Count} templates with threshold {thresholdScore}");
+
+                IdentifyResult identifyResult = Comparison.Identify(capturedFmd, 0, validTemplates.ToArray(), thresholdScore, validTemplates.Count);
+                
+                if (identifyResult.ResultCode != Constants.ResultCode.DP_SUCCESS)
+                {
+                    _logger.Warning("Identification failed with result: {Result}", identifyResult.ResultCode);
+                    return Task.FromResult<string?>(null);
+                }
+
+                if (identifyResult.Indexes == null || identifyResult.Indexes.Length == 0)
+                {
+                    _logger.Information("No matches found during identification");
+                    return Task.FromResult<string?>(null);
+                }
+
+                // Return the first match (best match)
+                int[][] indexes = identifyResult.Indexes;
+                int matchIndex = indexes[0][0];
+                string matchedEmployeeName = employeeNames[matchIndex];
+                
+                _logger.Information($"Identification successful - Found {identifyResult.Indexes.Length} matches, best match: Employee {matchedEmployeeName}");
+                
+                return Task.FromResult<string?>(matchedEmployeeName);
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error during fingerprint identification");
+                return Task.FromResult<string?>(null);
             }
         }
 
@@ -1186,6 +1541,18 @@ namespace ERPNextFingerprintApp.Services
             };
         }
 
+        /// <summary>
+        /// Clear the template cache to free memory
+        /// </summary>
+        public void ClearTemplateCache()
+        {
+            lock (_cacheLock)
+            {
+                _templateCache.Clear();
+                _logger.Information("Template cache cleared - freed memory for {Count} cached templates", _templateCache.Count);
+            }
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -1203,6 +1570,12 @@ namespace ERPNextFingerprintApp.Services
                 {
                     _currentReader.Dispose();
                     _currentReader = null;
+                }
+
+                // Clear template cache
+                lock (_cacheLock)
+                {
+                    _templateCache.Clear();
                 }
 
                 _readers = null;

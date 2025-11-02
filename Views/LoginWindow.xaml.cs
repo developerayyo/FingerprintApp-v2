@@ -12,21 +12,71 @@ namespace ERPNextFingerprintApp.Views
     public partial class LoginWindow : Window
     {
         private readonly ERPNextApiService _apiService;
+        private readonly CredentialStorageService _credentialStorage;
 
         public LoginWindow()
         {
             InitializeComponent();
             
-            // Get the API service from dependency injection
+            // Get services from dependency injection
             _apiService = App.ServiceProvider.GetRequiredService<ERPNextApiService>();
+            _credentialStorage = new CredentialStorageService();
             
-            // Set focus to username textbox
-            Loaded += (s, e) => UsernameTextBox.Focus();
+            // Load saved credentials if available
+            LoadSavedCredentials();
+            
+            // Set focus to username textbox (or password if username is filled)
+            Loaded += (s, e) => 
+            {
+                if (string.IsNullOrEmpty(UsernameTextBox.Text))
+                    UsernameTextBox.Focus();
+                else
+                    PasswordBox.Focus();
+            };
             
             // Handle Enter key press for login
             KeyDown += LoginWindow_KeyDown;
             UsernameTextBox.KeyDown += InputField_KeyDown;
             PasswordBox.KeyDown += InputField_KeyDown;
+            RememberMeCheckBox.KeyDown += InputField_KeyDown;
+        }
+
+        private async void LoadSavedCredentials()
+        {
+            try
+            {
+                var savedCredentials = _credentialStorage.GetCredentials();
+                if (savedCredentials.HasValue)
+                {
+                    UsernameTextBox.Text = savedCredentials.Value.Username;
+                    PasswordBox.Password = savedCredentials.Value.Password;
+                    RememberMeCheckBox.IsChecked = true;
+                    
+                    Log.Information("Loaded saved credentials for user: {Username}", savedCredentials.Value.Username);
+                    
+                    // Attempt automatic login
+                    await Task.Delay(500); // Small delay to ensure UI is loaded
+                    await AttemptAutoLogin();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Failed to load saved credentials");
+            }
+        }
+
+        private async Task AttemptAutoLogin()
+        {
+            try
+            {
+                Log.Information("Attempting automatic login");
+                await LoginAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Warning(ex, "Automatic login failed");
+                // If auto-login fails, just show the login form normally
+            }
         }
 
         private void LoginWindow_KeyDown(object sender, KeyEventArgs e)
@@ -96,6 +146,34 @@ namespace ERPNextFingerprintApp.Views
                 if (loginResult)
                 {
                     Log.Information("Login successful for user: {Username}", username);
+                    
+                    // Save credentials if Remember Me is checked
+                    if (RememberMeCheckBox.IsChecked == true)
+                    {
+                        try
+                        {
+                            _credentialStorage.SaveCredentials(username, password);
+                            Log.Information("Credentials saved for user: {Username}", username);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Failed to save credentials for user: {Username}", username);
+                        }
+                    }
+                    else
+                    {
+                        // Clear saved credentials if Remember Me is unchecked
+                        try
+                        {
+                            _credentialStorage.ClearCredentials();
+                            Log.Information("Cleared saved credentials");
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Warning(ex, "Failed to clear saved credentials");
+                        }
+                    }
+                    
                     ShowSuccessMessage("Login successful! Opening application...");
                     
                     // Small delay to show success message

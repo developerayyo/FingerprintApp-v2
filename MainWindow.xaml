@@ -300,7 +300,7 @@
             </TabItem>
 
             <!-- Verification Tab -->
-            <TabItem Header="Fingerprint Verification" 
+            <TabItem Header="Deductions" 
                      Style="{StaticResource ModernTabItemStyle}">
                 <Grid Margin="16">
                     <Grid.ColumnDefinitions>

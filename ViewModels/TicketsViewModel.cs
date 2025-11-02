@@ -184,9 +184,19 @@ namespace ERPNextFingerprintApp.ViewModels
                 }
                 else
                 {
-                    StatusMessage = "Fingerprint not recognized. Please try again.";
-                    Log.Warning("Fingerprint verification failed for Ticket fetch: {Error}", 
-                        verificationResult.ErrorMessage);
+                    // Check if this is a timeout error specifically
+                    if (!string.IsNullOrEmpty(verificationResult.ErrorMessage) && 
+                        verificationResult.ErrorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+                    {
+                        StatusMessage = "Fingerprint capture timeout. Please try again.";
+                        Log.Warning("Fingerprint capture timeout during Ticket fetch");
+                    }
+                    else
+                    {
+                        StatusMessage = "Fingerprint not recognized. Please try again.";
+                        Log.Warning("Fingerprint verification failed for Ticket fetch: {Error}", 
+                            verificationResult.ErrorMessage);
+                    }
                 }
             }
             catch (Exception ex)
@@ -271,8 +281,19 @@ namespace ERPNextFingerprintApp.ViewModels
                 }
                 else
                 {
-                    StatusMessage = "Fingerprint verification failed. Ticket not used.";
-                    Log.Warning("Fingerprint verification failed for ticket use");
+                    // Check if this is a timeout error specifically
+                    if (!string.IsNullOrEmpty(verificationResult.ErrorMessage) && 
+                        verificationResult.ErrorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+                    {
+                        StatusMessage = "Fingerprint capture timeout. Ticket not used. Please try again.";
+                        Log.Warning("Fingerprint capture timeout during ticket use");
+                    }
+                    else
+                    {
+                        StatusMessage = "Fingerprint verification failed. Ticket not used.";
+                        Log.Warning("Fingerprint verification failed for ticket use: {Error}", 
+                            verificationResult.ErrorMessage);
+                    }
                 }
             }
             catch (Exception ex)
@@ -356,8 +377,19 @@ namespace ERPNextFingerprintApp.ViewModels
                 }
                 else
                 {
-                    StatusMessage = "Fingerprint verification failed. Ticket not used.";
-                    Log.Warning("Fingerprint verification failed for use all Ticket");
+                    // Check if this is a timeout error specifically
+                    if (!string.IsNullOrEmpty(verificationResult.ErrorMessage) && 
+                        verificationResult.ErrorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+                    {
+                        StatusMessage = "Fingerprint capture timeout. Ticket not used. Please try again.";
+                        Log.Warning("Fingerprint capture timeout during use all Ticket");
+                    }
+                    else
+                    {
+                        StatusMessage = "Fingerprint verification failed. Ticket not used.";
+                        Log.Warning("Fingerprint verification failed for use all Ticket: {Error}", 
+                            verificationResult.ErrorMessage);
+                    }
                 }
             }
             catch (Exception ex)
@@ -448,7 +480,19 @@ namespace ERPNextFingerprintApp.ViewModels
 
         private void OnFingerprintError(object? sender, string errorMessage)
         {
-            StatusMessage = $"Fingerprint error: {errorMessage}";
+            // Handle timeout errors specifically
+            if (errorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
+            {
+                StatusMessage = "Fingerprint capture timeout. Please try again.";
+                Log.Warning("Fingerprint capture timeout occurred");
+            }
+            else
+            {
+                StatusMessage = $"Fingerprint error: {errorMessage}";
+                Log.Warning("Fingerprint error occurred: {Error}", errorMessage);
+            }
+            
+            // Reset UI state to allow retry
             IsLoading = false;
             IsFetchEnabled = true;
         }

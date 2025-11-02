@@ -617,7 +617,7 @@ namespace ERPNextFingerprintApp.Services
                 var updateData = new
                 {
                     status = "Used",
-                    custom_used_in = usedBy
+                    custom_used_inn = usedBy
                 };
 
                 var json = JsonConvert.SerializeObject(updateData);
