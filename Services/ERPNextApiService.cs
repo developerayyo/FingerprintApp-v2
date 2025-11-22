@@ -22,6 +22,7 @@ namespace ERPNextFingerprintApp.Services
         private bool _isSessionAuthenticated = false;
 
         public bool IsAuthenticated => _isSessionAuthenticated && !string.IsNullOrEmpty(_sessionId);
+        public string? CurrentUsername { get; private set; }
 
         public ERPNextApiService(Config config)
         {
@@ -84,7 +85,21 @@ namespace ERPNextFingerprintApp.Services
                                 // Remove API key authorization and set up session authentication
                                 _httpClient.DefaultRequestHeaders.Remove("Authorization");
                                 
-                                Log.Information("Login successful for user: {Username}, Session ID: {SessionId}", username, _sessionId?.Substring(0, 8) + "...");
+                                // Fetch the actual user ID (email) from ERPNext
+                                var userIdResult = await GetCurrentUserAsync();
+                                if (userIdResult.IsSuccess && !string.IsNullOrEmpty(userIdResult.Data))
+                                {
+                                    CurrentUsername = userIdResult.Data; // Store user ID (email), not username
+                                    Log.Information("Login successful for user: {Username}, User ID: {UserId}, Session ID: {SessionId}", 
+                                        username, CurrentUsername, _sessionId?.Substring(0, 8) + "...");
+                                }
+                                else
+                                {
+                                    // Fallback to username if we can't get user ID
+                                    CurrentUsername = username;
+                                    Log.Warning("Could not fetch user ID, using username as fallback: {Username}", username);
+                                }
+                                
                                 return true;
                             }
                         }
@@ -149,6 +164,7 @@ namespace ERPNextFingerprintApp.Services
         {
             _sessionId = null;
             _isSessionAuthenticated = false;
+            CurrentUsername = null;
             
             // Remove any existing cookie headers
             _httpClient.DefaultRequestHeaders.Remove("Cookie");
@@ -606,7 +622,7 @@ namespace ERPNextFingerprintApp.Services
         /// Updates a single ticket status to "Used" in ERPNext
         /// </summary>
         /// <param name="ticketId">The ticket ID to update</param>
-        /// <param name="usedBy">The user who used the ticket</param>
+        /// <param name="usedBy">The user ID (email) who used the ticket</param>
         /// <returns>Success or failure result</returns>
         public async Task<ApiResult<string>> UseTicketAsync(string ticketId, string usedBy)
         {
@@ -617,7 +633,7 @@ namespace ERPNextFingerprintApp.Services
                 var updateData = new
                 {
                     status = "Used",
-                    custom_used_inn = usedBy
+                    custom_used_inn = usedBy  // Must be user ID (email), not username
                 };
 
                 var json = JsonConvert.SerializeObject(updateData);

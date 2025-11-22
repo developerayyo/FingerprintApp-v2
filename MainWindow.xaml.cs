@@ -513,6 +513,9 @@ namespace ERPNextFingerprintApp
                     // Create and show login window
                     var loginWindow = App.ServiceProvider.GetRequiredService<Views.LoginWindow>();
                     
+                    // Prevent auto-login after manual logout
+                    loginWindow.PreventAutoLogin();
+                    
                     // Set the login window as the application's main window
                     Application.Current.MainWindow = loginWindow;
                     loginWindow.Show();

@@ -470,3 +470,5 @@ erp_error.txt
 *.cer
 *.crt
 *.key
+
+temp_*.txt

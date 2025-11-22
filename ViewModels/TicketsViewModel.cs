@@ -16,6 +16,8 @@ namespace ERPNextFingerprintApp.ViewModels
     {
         private readonly ERPNextApiService _apiService;
         private readonly FingerprintService _fingerprintService;
+        private readonly DatabaseService _databaseService;
+        private readonly SyncService _syncService;
         private List<Employee> _employees = new();
         private Employee? _currentEmployee;
 
@@ -48,10 +50,12 @@ namespace ERPNextFingerprintApp.ViewModels
         public ICommand UseAllTicketsCommand { get; }
         public ICommand RefreshTicketsCommand { get; }
 
-        public TicketsViewModel(ERPNextApiService apiService, FingerprintService fingerprintService)
+        public TicketsViewModel(ERPNextApiService apiService, FingerprintService fingerprintService, DatabaseService databaseService, SyncService syncService)
         {
             _apiService = apiService ?? throw new ArgumentNullException(nameof(apiService));
             _fingerprintService = fingerprintService ?? throw new ArgumentNullException(nameof(fingerprintService));
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
 
             FetchTicketsCommand = new AsyncRelayCommand(FetchTicketsAsync, () => IsFetchEnabled);
             UseTicketCommand = new AsyncRelayCommand<Ticket>(UseTicketAsync, ticket => ticket != null && !IsLoading);
@@ -106,18 +110,25 @@ namespace ERPNextFingerprintApp.ViewModels
             try
             {
                 Log.Information("Loading employees for Ticket verification");
-                var result = await _apiService.GetEmployeesAsync();
+                StatusMessage = "Syncing employee data...";
+
+                // Trigger sync in background
+                _ = _syncService.SyncEmployeesAsync();
+
+                // Load from local DB
+                var activeEmployees = await _databaseService.GetActiveEmployeesAsync();
                 
-                if (result.IsSuccess && result.Data != null)
+                _employees = activeEmployees.Select(e => new Employee
                 {
-                    _employees = result.Data;
-                    Log.Information("Loaded {Count} employees for Ticket verification", _employees.Count);
-                }
-                else
-                {
-                    Log.Warning("Failed to load employees: {Error}", result.ErrorMessage);
-                    StatusMessage = $"Failed to load employees: {result.ErrorMessage}";
-                }
+                    Name = e.Name,
+                    EmployeeName = e.EmployeeName,
+                    Department = e.Department,
+                    Designation = e.Designation,
+                    FingerprintTemplate = e.FingerprintTemplate
+                }).ToList();
+
+                Log.Information("Loaded {Count} employees for Ticket verification", _employees.Count);
+                StatusMessage = $"Loaded {_employees.Count} employees";
             }
             catch (Exception ex)
             {
@@ -132,25 +143,35 @@ namespace ERPNextFingerprintApp.ViewModels
             {
                 IsLoading = true;
                 IsFetchEnabled = false;
-                StatusMessage = "Please verify your fingerprint to fetch Ticket...";
+                StatusMessage = "Place finger on scanner to fetch Ticket...";
 
                 // Clear previous data
                 Tickets.Clear();
                 _currentEmployee = null;
                 UpdateTicketSummary();
 
-                // Perform fingerprint verification
-                var verificationResult = await _fingerprintService.VerifyAsync(_employees);
+                // Capture fingerprint first
+                var captureResult = await _fingerprintService.CaptureAsync();
+                if (!captureResult.IsSuccess)
+                {
+                    StatusMessage = $"Capture failed: {captureResult.ErrorMessage}";
+                    return;
+                }
+
+                StatusMessage = "Verifying fingerprint...";
+
+                // Verify against local DB
+                var verificationResult = await _fingerprintService.VerifyAgainstLocalDbAsync(captureResult.Template);
 
                 if (verificationResult.IsSuccess && verificationResult.MatchedEmployee != null)
                 {
                     _currentEmployee = verificationResult.MatchedEmployee;
-                    StatusMessage = $"Fingerprint verified for {_currentEmployee.EmployeeName}. Fetching Ticket...";
+                    StatusMessage = $"Verified: {_currentEmployee.EmployeeName}. Fetching Ticket...";
                     
                     Log.Information("Fingerprint verified for employee: {EmployeeId} - {EmployeeName}", 
                         _currentEmployee.Name, _currentEmployee.EmployeeName);
 
-                    // Fetch Ticket for the verified employee
+                    // Fetch Ticket for the verified employee (API only)
                     var ticketsResult = await _apiService.GetUnusedTicketsAsync(_currentEmployee.Name);
 
                     if (ticketsResult.IsSuccess && ticketsResult.Data != null)
@@ -184,19 +205,9 @@ namespace ERPNextFingerprintApp.ViewModels
                 }
                 else
                 {
-                    // Check if this is a timeout error specifically
-                    if (!string.IsNullOrEmpty(verificationResult.ErrorMessage) && 
-                        verificationResult.ErrorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-                    {
-                        StatusMessage = "Fingerprint capture timeout. Please try again.";
-                        Log.Warning("Fingerprint capture timeout during Ticket fetch");
-                    }
-                    else
-                    {
-                        StatusMessage = "Fingerprint not recognized. Please try again.";
-                        Log.Warning("Fingerprint verification failed for Ticket fetch: {Error}", 
-                            verificationResult.ErrorMessage);
-                    }
+                    var errorMessage = verificationResult.ErrorMessage ?? "Verification failed";
+                    StatusMessage = $"Verification failed: {errorMessage}";
+                    Log.Warning("Fingerprint verification failed for Ticket fetch: {Error}", errorMessage);
                 }
             }
             catch (Exception ex)
@@ -208,16 +219,6 @@ namespace ERPNextFingerprintApp.ViewModels
             {
                 IsLoading = false;
                 IsFetchEnabled = true;
-                
-                // Reset fingerprint service state
-                try
-                {
-                    await _fingerprintService.ResetServiceStateAsync();
-                }
-                catch (Exception resetEx)
-                {
-                    Log.Warning(resetEx, "Error resetting fingerprint service state after ticket fetch");
-                }
             }
         }
 
@@ -229,71 +230,49 @@ namespace ERPNextFingerprintApp.ViewModels
             try
             {
                 IsLoading = true;
-                StatusMessage = $"Please verify your fingerprint to use ticket {ticket.TicketType}...";
-
-                // Perform fingerprint verification again for security
-                var verificationResult = await _fingerprintService.VerifyAsync(_employees);
-
-                if (verificationResult.IsSuccess && 
-                    verificationResult.MatchedEmployee != null &&
-                    verificationResult.MatchedEmployee.Name == _currentEmployee.Name)
+                StatusMessage = $"Using ticket {ticket.TicketType}...";
+                
+                // Get current user (operator)
+                string currentUser = _apiService.CurrentUsername;
+                if (string.IsNullOrEmpty(currentUser))
                 {
-                    StatusMessage = $"Fingerprint verified. Using ticket {ticket.TicketType}...";
-                    
-                    // Get the current user ID from ERPNext
                     var currentUserResult = await _apiService.GetCurrentUserAsync();
-                    if (!currentUserResult.IsSuccess || string.IsNullOrEmpty(currentUserResult.Data))
-                    {
-                        StatusMessage = "Error: Could not get current user information. Please login again.";
-                        Log.Error("Failed to get current user when trying to use ticket {TicketId}: {Error}", 
-                            ticket.Name, currentUserResult.ErrorMessage);
-                        return;
-                    }
-                    
-                    var useResult = await _apiService.UseTicketAsync(ticket.Name, currentUserResult.Data);
+                    if (currentUserResult.IsSuccess) currentUser = currentUserResult.Data;
+                }
 
-                    if (useResult.IsSuccess)
-                    {
-                        // Remove the used ticket from the list
-                        Tickets.Remove(ticket);
-                        UpdateTicketSummary();
+                if (string.IsNullOrEmpty(currentUser))
+                {
+                    StatusMessage = "Error: Could not identify current operator.";
+                    return;
+                }
+                
+                var useResult = await _apiService.UseTicketAsync(ticket.Name, currentUser);
 
-                        StatusMessage = $"Ticket {ticket.TicketType} (₦{ticket.Amount:N2}) used successfully!";
-                        Log.Information("Successfully used ticket {TicketId} for employee {EmployeeId}", 
-                            ticket.Name, _currentEmployee.Name);
+                if (useResult.IsSuccess)
+                {
+                    // Remove the used ticket from the list
+                    Tickets.Remove(ticket);
+                    UpdateTicketSummary();
 
-                        // Auto-refresh after 2 seconds
-                        await Task.Delay(2000);
-                        if (Tickets.Any())
-                        {
-                            StatusMessage = $"{Tickets.Count} ticket{(Tickets.Count == 1 ? "" : "s")} remaining";
-                        }
-                        else
-                        {
-                            StatusMessage = "All Ticket used. Click 'Fetch Ticket' to check for new ones.";
-                        }
-                    }
-                    else
-                    {
-                        StatusMessage = $"Failed to use ticket: {useResult.ErrorMessage}";
-                        Log.Error("Failed to use ticket {TicketId}: {Error}", ticket.Name, useResult.ErrorMessage);
-                    }
+                    StatusMessage = $"Ticket {ticket.TicketType} (₦{ticket.Amount:N2}) used successfully!";
+                    Log.Information("Successfully used ticket {TicketId} for employee {EmployeeId}", 
+                        ticket.Name, _currentEmployee.Name);
                 }
                 else
                 {
-                    // Check if this is a timeout error specifically
-                    if (!string.IsNullOrEmpty(verificationResult.ErrorMessage) && 
-                        verificationResult.ErrorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-                    {
-                        StatusMessage = "Fingerprint capture timeout. Ticket not used. Please try again.";
-                        Log.Warning("Fingerprint capture timeout during ticket use");
-                    }
-                    else
-                    {
-                        StatusMessage = "Fingerprint verification failed. Ticket not used.";
-                        Log.Warning("Fingerprint verification failed for ticket use: {Error}", 
-                            verificationResult.ErrorMessage);
-                    }
+                    StatusMessage = $"Failed to use ticket: {useResult.ErrorMessage}";
+                    Log.Error("Failed to use ticket {TicketId}: {Error}", ticket.Name, useResult.ErrorMessage);
+                }
+
+                // Auto-refresh after 2 seconds
+                await Task.Delay(2000);
+                if (Tickets.Any())
+                {
+                    StatusMessage = $"{Tickets.Count} ticket{(Tickets.Count == 1 ? "" : "s")} remaining";
+                }
+                else
+                {
+                    StatusMessage = "All Ticket used. Click 'Fetch Ticket' to check for new ones.";
                 }
             }
             catch (Exception ex)
@@ -304,16 +283,6 @@ namespace ERPNextFingerprintApp.ViewModels
             finally
             {
                 IsLoading = false;
-                
-                // Reset fingerprint service state
-                try
-                {
-                    await _fingerprintService.ResetServiceStateAsync();
-                }
-                catch (Exception resetEx)
-                {
-                    Log.Warning(resetEx, "Error resetting fingerprint service state after ticket use");
-                }
             }
         }
 
@@ -328,29 +297,43 @@ namespace ERPNextFingerprintApp.ViewModels
                 var ticketCount = Tickets.Count;
                 var totalAmount = Tickets.Sum(t => t.Amount);
                 
-                StatusMessage = $"Please verify your fingerprint to use all {ticketCount} Ticket (₦{totalAmount:N2})...";
+                StatusMessage = $"Place finger to use all {ticketCount} Ticket (₦{totalAmount:N2})...";
 
-                // Perform fingerprint verification again for security
-                var verificationResult = await _fingerprintService.VerifyAsync(_employees);
+                // Capture fingerprint first
+                var captureResult = await _fingerprintService.CaptureAsync();
+                if (!captureResult.IsSuccess)
+                {
+                    StatusMessage = $"Capture failed: {captureResult.ErrorMessage}";
+                    return;
+                }
+
+                StatusMessage = "Verifying fingerprint...";
+
+                // Verify against local DB
+                var verificationResult = await _fingerprintService.VerifyAgainstLocalDbAsync(captureResult.Template);
 
                 if (verificationResult.IsSuccess && 
                     verificationResult.MatchedEmployee != null &&
                     verificationResult.MatchedEmployee.Name == _currentEmployee.Name)
                 {
-                    StatusMessage = $"Fingerprint verified. Using all {ticketCount} Ticket...";
+                    StatusMessage = $"Verified. Using all {ticketCount} Ticket...";
                     
-                    // Get the current user ID from ERPNext
-                    var currentUserResult = await _apiService.GetCurrentUserAsync();
-                    if (!currentUserResult.IsSuccess || string.IsNullOrEmpty(currentUserResult.Data))
+                    // Get current user (operator)
+                    string currentUser = _apiService.CurrentUsername;
+                    if (string.IsNullOrEmpty(currentUser))
                     {
-                        StatusMessage = "Error: Could not get current user information. Please login again.";
-                        Log.Error("Failed to get current user when trying to use all tickets: {Error}", 
-                            currentUserResult.ErrorMessage);
+                        var currentUserResult = await _apiService.GetCurrentUserAsync();
+                        if (currentUserResult.IsSuccess) currentUser = currentUserResult.Data;
+                    }
+
+                    if (string.IsNullOrEmpty(currentUser))
+                    {
+                        StatusMessage = "Error: Could not identify current operator.";
                         return;
                     }
                     
                     var ticketsToUse = Tickets.ToList();
-                    var useResult = await _apiService.UseAllTicketsAsync(ticketsToUse, currentUserResult.Data);
+                    var useResult = await _apiService.UseAllTicketsAsync(ticketsToUse, currentUser);
 
                     if (useResult.IsSuccess)
                     {
@@ -361,10 +344,6 @@ namespace ERPNextFingerprintApp.ViewModels
                         StatusMessage = useResult.Data ?? $"All {ticketCount} Ticket used successfully!";
                         Log.Information("Successfully used all {Count} Ticket for employee {EmployeeId}", 
                             ticketCount, _currentEmployee.Name);
-
-                        // Auto-refresh after 3 seconds
-                        await Task.Delay(3000);
-                        StatusMessage = "All Ticket used. Click 'Fetch Ticket' to check for new ones.";
                     }
                     else
                     {
@@ -374,22 +353,16 @@ namespace ERPNextFingerprintApp.ViewModels
                         // Refresh the list to see which Ticket were actually used
                         await RefreshTicketsAsync();
                     }
+
+                    // Auto-refresh after 3 seconds
+                    await Task.Delay(3000);
+                    StatusMessage = "All Ticket used. Click 'Fetch Ticket' to check for new ones.";
                 }
                 else
                 {
-                    // Check if this is a timeout error specifically
-                    if (!string.IsNullOrEmpty(verificationResult.ErrorMessage) && 
-                        verificationResult.ErrorMessage.Contains("timeout", StringComparison.OrdinalIgnoreCase))
-                    {
-                        StatusMessage = "Fingerprint capture timeout. Ticket not used. Please try again.";
-                        Log.Warning("Fingerprint capture timeout during use all Ticket");
-                    }
-                    else
-                    {
-                        StatusMessage = "Fingerprint verification failed. Ticket not used.";
-                        Log.Warning("Fingerprint verification failed for use all Ticket: {Error}", 
-                            verificationResult.ErrorMessage);
-                    }
+                    var errorMessage = verificationResult.ErrorMessage ?? "Verification failed";
+                    StatusMessage = $"Verification failed: {errorMessage}";
+                    Log.Warning("Fingerprint verification failed for use all Ticket: {Error}", errorMessage);
                 }
             }
             catch (Exception ex)
@@ -400,16 +373,6 @@ namespace ERPNextFingerprintApp.ViewModels
             finally
             {
                 IsLoading = false;
-                
-                // Reset fingerprint service state
-                try
-                {
-                    await _fingerprintService.ResetServiceStateAsync();
-                }
-                catch (Exception resetEx)
-                {
-                    Log.Warning(resetEx, "Error resetting fingerprint service state after use all Ticket");
-                }
             }
         }
 

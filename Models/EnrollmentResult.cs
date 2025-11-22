@@ -59,6 +59,18 @@ namespace ERPNextFingerprintApp.Models
             };
         }
 
+        public static EnrollmentResult Success(string template, int capturedScans)
+        {
+            return new EnrollmentResult
+            {
+                IsSuccess = true,
+                Templates = new List<Fmd>(),
+                Template = template,
+                CapturedScans = capturedScans,
+                ResultCode = Constants.ResultCode.DP_SUCCESS
+            };
+        }
+
         public static EnrollmentResult Failure(string errorMessage, Constants.ResultCode resultCode = Constants.ResultCode.DP_FAILURE)
         {
             return new EnrollmentResult

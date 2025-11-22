@@ -857,9 +857,26 @@ namespace ERPNextFingerprintApp.Services
 
                 if (capturedTemplates.Count >= requiredScans)
                 {
-                    _logger.Information("Enrollment completed successfully with {Count} templates", capturedTemplates.Count);
-                    StatusChanged?.Invoke(this, "Enrollment completed successfully!");
-                    return EnrollmentResult.Success(capturedTemplates, capturedTemplates.Count);
+                    _logger.Information("Captured {Count} templates. Creating enrollment FMD...", capturedTemplates.Count);
+                    StatusChanged?.Invoke(this, "Creating enrollment template...");
+
+                    // Create enrollment FMD from captured templates
+                    var enrollmentFmd = CreateEnrollmentFmd(capturedTemplates);
+                    
+                    if (enrollmentFmd != null)
+                    {
+                        var enrollmentTemplate = Convert.ToBase64String(enrollmentFmd.Bytes);
+                        _logger.Information("Enrollment FMD created successfully");
+                        StatusChanged?.Invoke(this, "Enrollment completed successfully!");
+                        return EnrollmentResult.Success(enrollmentTemplate, capturedTemplates.Count);
+                    }
+                    else
+                    {
+                         var error = "Failed to create enrollment FMD from captured templates";
+                        _logger.Error(error);
+                        StatusChanged?.Invoke(this, "Enrollment failed - could not create template");
+                        return EnrollmentResult.Failure(error);
+                    }
                 }
                 else
                 {
@@ -874,6 +891,39 @@ namespace ERPNextFingerprintApp.Services
                 _logger.Error(ex, "Error during improved enrollment");
                 StatusChanged?.Invoke(this, "Enrollment failed due to error");
                 return EnrollmentResult.Failure($"Enrollment failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Create an enrollment FMD from a list of captured FMDs
+        /// </summary>
+        private Fmd CreateEnrollmentFmd(List<Fmd> fmds)
+        {
+            try
+            {
+                if (fmds == null || fmds.Count == 0)
+                {
+                    _logger.Warning("No FMDs provided for enrollment");
+                    return null;
+                }
+
+                // Use DPUruNet.Enrollment to create the enrollment FMD
+                DataResult<Fmd> resultEnrollment = DPUruNet.Enrollment.CreateEnrollmentFmd(Constants.Formats.Fmd.ANSI, fmds);
+
+                if (resultEnrollment.ResultCode == Constants.ResultCode.DP_SUCCESS)
+                {
+                    return resultEnrollment.Data;
+                }
+                else
+                {
+                    _logger.Error("Failed to create enrollment FMD: {ResultCode}", resultEnrollment.ResultCode);
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error(ex, "Error creating enrollment FMD");
+                return null;
             }
         }
 

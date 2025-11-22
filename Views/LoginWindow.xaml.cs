@@ -13,6 +13,7 @@ namespace ERPNextFingerprintApp.Views
     {
         private readonly ERPNextApiService _apiService;
         private readonly CredentialStorageService _credentialStorage;
+        private bool _preventAutoLogin = false; // Flag to prevent auto-login after manual logout
 
         public LoginWindow()
         {
@@ -54,9 +55,16 @@ namespace ERPNextFingerprintApp.Views
                     
                     Log.Information("Loaded saved credentials for user: {Username}", savedCredentials.Value.Username);
                     
-                    // Attempt automatic login
-                    await Task.Delay(500); // Small delay to ensure UI is loaded
-                    await AttemptAutoLogin();
+                    // Only attempt automatic login if not prevented (e.g., after logout)
+                    if (!_preventAutoLogin)
+                    {
+                        await Task.Delay(500); // Small delay to ensure UI is loaded
+                        await AttemptAutoLogin();
+                    }
+                    else
+                    {
+                        Log.Information("Auto-login prevented - user can change credentials");
+                    }
                 }
             }
             catch (Exception ex)
@@ -75,8 +83,18 @@ namespace ERPNextFingerprintApp.Views
             catch (Exception ex)
             {
                 Log.Warning(ex, "Automatic login failed");
-                // If auto-login fails, just show the login form normally
+                // If auto-login fails, show error and let user login manually
+                ShowErrorMessage("Auto-login failed. Please login manually.");
             }
+        }
+
+        /// <summary>
+        /// Public method to prevent auto-login (called from MainWindow after logout)
+        /// </summary>
+        public void PreventAutoLogin()
+        {
+            _preventAutoLogin = true;
+            Log.Information("Auto-login has been disabled for this session");
         }
 
         private void LoginWindow_KeyDown(object sender, KeyEventArgs e)

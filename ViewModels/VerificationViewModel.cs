@@ -16,6 +16,8 @@ namespace ERPNextFingerprintApp.ViewModels
     {
         private readonly ERPNextApiService _apiService;
         private readonly FingerprintService _fingerprintService;
+        private readonly DatabaseService _databaseService;
+        private readonly SyncService _syncService;
         private List<Employee> _employees = new();
 
         [ObservableProperty]
@@ -49,10 +51,12 @@ namespace ERPNextFingerprintApp.ViewModels
         public ICommand ProcessDeductionCommand { get; }
         public ICommand RefreshEmployeesCommand { get; }
 
-        public VerificationViewModel(ERPNextApiService apiService, FingerprintService fingerprintService, Config config)
+        public VerificationViewModel(ERPNextApiService apiService, FingerprintService fingerprintService, DatabaseService databaseService, SyncService syncService, Config config)
         {
             _apiService = apiService ?? throw new ArgumentNullException(nameof(apiService));
             _fingerprintService = fingerprintService ?? throw new ArgumentNullException(nameof(fingerprintService));
+            _databaseService = databaseService ?? throw new ArgumentNullException(nameof(databaseService));
+            _syncService = syncService ?? throw new ArgumentNullException(nameof(syncService));
 
             LoadEmployeesCommand = new AsyncRelayCommand(LoadEmployeesAsync);
             ScanFingerprintCommand = new AsyncRelayCommand(ScanFingerprintAsync, () => IsScanEnabled);
@@ -109,18 +113,23 @@ namespace ERPNextFingerprintApp.ViewModels
                 IsLoading = true;
                 StatusMessage = "Loading employee data...";
 
-                var result = await _apiService.GetEmployeesAsync();
-                if (result.IsSuccess && result.Data != null)
+                // Trigger sync in background
+                _ = _syncService.SyncEmployeesAsync();
+
+                // Load from local DB
+                var activeEmployees = await _databaseService.GetActiveEmployeesAsync();
+                
+                _employees = activeEmployees.Select(e => new Employee
                 {
-                    _employees = result.Data;
-                    StatusMessage = $"Loaded {_employees.Count} employees for verification";
-                    Log.Information("Loaded {Count} employees for verification", _employees.Count);
-                }
-                else
-                {
-                    StatusMessage = $"Failed to load employees: {result.ErrorMessage}";
-                    Log.Error("Failed to load employees for verification: {ErrorMessage}", result.ErrorMessage);
-                }
+                    Name = e.Name,
+                    EmployeeName = e.EmployeeName,
+                    Department = e.Department,
+                    Designation = e.Designation,
+                    FingerprintTemplate = e.FingerprintTemplate
+                }).ToList();
+
+                StatusMessage = $"Loaded {_employees.Count} employees from local database";
+                Log.Information("Loaded {Count} employees from local database", _employees.Count);
             }
             catch (Exception ex)
             {
@@ -138,19 +147,20 @@ namespace ERPNextFingerprintApp.ViewModels
             try
             {
                 IsLoading = true;
-                StatusMessage = "Loading employee data...";
+                StatusMessage = "Syncing employee data...";
 
-                var result = await _apiService.GetEmployeesAsync();
-                if (result.IsSuccess && result.Data != null)
+                // Force sync
+                var syncResult = await _syncService.SyncEmployeesAsync();
+                
+                if (syncResult)
                 {
-                    _employees = result.Data;
-                    StatusMessage = $"Loaded {_employees.Count} employees for verification";
-                    Log.Information("Loaded {Count} employees for verification", _employees.Count);
+                    await LoadEmployeesAsync();
+                    StatusMessage = "Employee data synced successfully";
                 }
                 else
                 {
-                    StatusMessage = $"Failed to load employees: {result.ErrorMessage}";
-                    Log.Error("Failed to load employees for verification: {ErrorMessage}", result.ErrorMessage);
+                    StatusMessage = "Sync failed, using local data";
+                    await LoadEmployeesAsync();
                 }
             }
             catch (Exception ex)
@@ -180,62 +190,72 @@ namespace ERPNextFingerprintApp.ViewModels
                 IsProcessEnabled = false;
                 StatusMessage = "Place finger on scanner for verification...";
 
-                // Use the same verification method as Tickets (which works reliably)
-                StatusMessage = "Verifying fingerprint and processing deduction...";
-                var verificationResult = await _fingerprintService.VerifyAsync(_employees);
+                // Capture fingerprint first
+                var captureResult = await _fingerprintService.CaptureAsync();
+                if (!captureResult.IsSuccess)
+                {
+                    StatusMessage = $"Capture failed: {captureResult.ErrorMessage}";
+                    return;
+                }
+
+                StatusMessage = "Verifying fingerprint...";
+                
+                // Verify against local DB
+                var verificationResult = await _fingerprintService.VerifyAgainstLocalDbAsync(captureResult.Template);
 
                 if (verificationResult.IsSuccess && verificationResult.MatchedEmployee != null)
                 {
                     var employee = verificationResult.MatchedEmployee;
                     VerifiedEmployee = employee;
                     
-                    StatusMessage = $"Fingerprint verified for {employee.EmployeeName}. Creating deduction...";
+                    StatusMessage = $"Verified: {employee.EmployeeName}. Processing deduction...";
                     Log.Information("Fingerprint verified for employee: {EmployeeId} - {EmployeeName}", 
                         employee.Name, employee.EmployeeName);
                     
-                    // Create deduction in ERPNext
+                    // Try to create deduction in ERPNext
                     var deductionResult = await _apiService.CreateDeductionAsync(
                         employee.Name,
                         SelectedDeductionType.ToString(),
                         DeductionAmount,
                         $"{SelectedDeductionType} deduction via fingerprint verification");
                     
+                    // Create deduction record for display
+                    var deduction = new DeductionRecord
+                    {
+                        Employee = employee.Name,
+                        EmployeeName = employee.EmployeeName,
+                        DeductionType = SelectedDeductionType,
+                        Amount = DeductionAmount,
+                        Timestamp = DateTime.Now,
+                        TransactionId = deductionResult.Data
+                    };
+
                     if (deductionResult.IsSuccess)
                     {
-                        // Create deduction record for display
-                        var deduction = new DeductionRecord
-                        {
-                            Employee = employee.Name,
-                            EmployeeName = employee.EmployeeName,
-                            DeductionType = SelectedDeductionType,
-                            Amount = DeductionAmount,
-                            Description = $"{SelectedDeductionType} deduction via fingerprint verification",
-                            Timestamp = DateTime.Now,
-                            Status = DeductionStatus.Completed,
-                            TransactionId = deductionResult.Data ?? Guid.NewGuid().ToString("N")[..8].ToUpper()
-                        };
-
-                        RecentDeductions.Insert(0, deduction);
-                        
-                        // Keep only last 10 deductions
-                        while (RecentDeductions.Count > 10)
-                        {
-                            RecentDeductions.RemoveAt(RecentDeductions.Count - 1);
-                        }
-
-                        StatusMessage = $"Success: {employee.EmployeeName} - Deduction processed (ID: {deductionResult.Data})";
-                        Log.Information("Employee verified and deduction created: {EmployeeId} - {EmployeeName} - Amount: {Amount}", 
-                            employee.Name, employee.EmployeeName, DeductionAmount);
+                        deduction.Description = $"{SelectedDeductionType}";
+                        deduction.Status = DeductionStatus.Completed;
+                        StatusMessage = $"Success: {employee.EmployeeName} - Deduction processed";
+                        Log.Information("Deduction created successfully for employee {EmployeeId}", employee.Name);
                     }
                     else
                     {
-                        StatusMessage = $"Fingerprint verified but deduction failed: {deductionResult.ErrorMessage}";
-                        Log.Error("Failed to create deduction for verified employee {EmployeeId}: {Error}", 
+                        deduction.Description = $"{SelectedDeductionType} (Failed)";
+                        deduction.Status = DeductionStatus.Failed;
+                        StatusMessage = $"Failed to create deduction for {employee.EmployeeName}: {deductionResult.ErrorMessage}";
+                        Log.Error("Failed to create deduction for employee {EmployeeId}: {Error}", 
                             employee.Name, deductionResult.ErrorMessage);
                     }
 
+                    RecentDeductions.Insert(0, deduction);
+                    
+                    // Keep only last 10 deductions
+                    while (RecentDeductions.Count > 10)
+                    {
+                        RecentDeductions.RemoveAt(RecentDeductions.Count - 1);
+                    }
+
                     // Reset for next transaction after showing success message
-                    await Task.Delay(1000);
+                    await Task.Delay(1500);
                     ResetVerification();
                 }
                 else

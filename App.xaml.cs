@@ -139,8 +139,13 @@ namespace ERPNextFingerprintApp
                     // Register configuration
                     services.AddSingleton(config);
 
+                    // Register Database Context
+                    services.AddDbContext<Data.AppDbContext>();
+
                     // Register services
                     services.AddSingleton<ERPNextApiService>();
+                    services.AddSingleton<Services.DatabaseService>();
+                    services.AddSingleton<Services.SyncService>();
                     services.AddSingleton<FingerprintService>();
 
                     // Register ViewModels
@@ -157,10 +162,30 @@ namespace ERPNextFingerprintApp
         {
             try
             {
+                // Initialize Database
+                Log.Information("Initializing Database...");
+                using (var scope = services.CreateScope())
+                {
+                    var dbContext = scope.ServiceProvider.GetRequiredService<Data.AppDbContext>();
+                    dbContext.Database.EnsureCreated();
+                }
+                LoggerService.LogServiceInitialization("Database", true);
+
                 // Initialize ERPNext API Service
                 Log.Information("Initializing ERPNext API Service...");
                 var apiService = services.GetRequiredService<ERPNextApiService>();
                 LoggerService.LogServiceInitialization("ERPNextApiService", true);
+
+                // Initialize Database Service
+                Log.Information("Initializing Database Service...");
+                var dbService = services.GetRequiredService<Services.DatabaseService>();
+                LoggerService.LogServiceInitialization("DatabaseService", true);
+
+                // Initialize Sync Service
+                Log.Information("Initializing Sync Service...");
+                var syncService = services.GetRequiredService<Services.SyncService>();
+                syncService.StartBackgroundSync(TimeSpan.FromMinutes(5));
+                LoggerService.LogServiceInitialization("SyncService", true);
 
                 // Initialize Fingerprint Service
                 Log.Information("Initializing Fingerprint Service...");
