@@ -271,6 +271,32 @@
                     </StackPanel>
                 </Border>
 
+                <!-- Recent Transactions -->
+                <TextBlock Text="Recent Transactions" 
+                          Style="{StaticResource SubHeaderTextStyle}"
+                          Margin="0,0,0,4"/>
+                
+                <ListView ItemsSource="{Binding RecentTickets}"
+                         MaxHeight="200"
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         Margin="0,0,0,12">
+                    <ListView.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="0,4">
+                                <TextBlock Text="{Binding EmployeeName}" 
+                                          FontWeight="Medium" 
+                                          FontSize="12"/>
+                                <TextBlock FontSize="10" 
+                                          Foreground="{StaticResource TextSecondaryBrush}">
+                                    <Run Text="{Binding TicketType}"/>
+                                    <Run Text=" - ₦"/>
+                                    <Run Text="{Binding Amount, StringFormat=F2}"/>
+                                </TextBlock>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+
                 <TextBlock Text="Instructions:" 
                          Style="{StaticResource SubHeaderTextStyle}"/>
                 <TextBlock Style="{StaticResource CaptionTextStyle}" TextWrapping="Wrap">

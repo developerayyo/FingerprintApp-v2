@@ -40,6 +40,9 @@ namespace ERPNextFingerprintApp.ViewModels
         private bool _hasMultipleTickets = false;
 
         [ObservableProperty]
+        private ObservableCollection<Ticket> _recentTickets = new();
+
+        [ObservableProperty]
         private string _totalAmount = "₦0.00";
 
         [ObservableProperty]
@@ -250,6 +253,25 @@ namespace ERPNextFingerprintApp.ViewModels
 
                 if (useResult.IsSuccess)
                 {
+                    // Add to recent transactions
+                    var usedTicket = new Ticket
+                    {
+                        Name = ticket.Name,
+                        Employee = ticket.Employee,
+                        EmployeeName = ticket.EmployeeName,
+                        TicketType = ticket.TicketType,
+                        Amount = ticket.Amount,
+                        Status = "Used"
+                    };
+                    
+                    RecentTickets.Insert(0, usedTicket);
+                    
+                    // Keep only last 10 transactions
+                    while (RecentTickets.Count > 10)
+                    {
+                        RecentTickets.RemoveAt(RecentTickets.Count - 1);
+                    }
+                    
                     // Remove the used ticket from the list
                     Tickets.Remove(ticket);
                     UpdateTicketSummary();
@@ -337,6 +359,28 @@ namespace ERPNextFingerprintApp.ViewModels
 
                     if (useResult.IsSuccess)
                     {
+                        // Add all used tickets to recent transactions
+                        foreach (var ticket in ticketsToUse)
+                        {
+                            var usedTicket = new Ticket
+                            {
+                                Name = ticket.Name,
+                                Employee = ticket.Employee,
+                                EmployeeName = ticket.EmployeeName,
+                                TicketType = ticket.TicketType,
+                                Amount = ticket.Amount,
+                                Status = "Used"
+                            };
+                            
+                            RecentTickets.Insert(0, usedTicket);
+                        }
+                        
+                        // Keep only last 10 transactions
+                        while (RecentTickets.Count > 10)
+                        {
+                            RecentTickets.RemoveAt(RecentTickets.Count - 1);
+                        }
+                        
                         // Clear all Ticket from the list
                         Tickets.Clear();
                         UpdateTicketSummary();
